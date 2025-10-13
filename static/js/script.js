@@ -58,6 +58,22 @@ function updateSectionTick(section) {
     }
 }
 
+function updateButtons() {
+    const sectionList = document.getElementById('section-list');
+    const sectionContent = document.getElementById('section-content');
+    const sendEmailSection = document.getElementById('send-email-section');
+    const submitBtn = document.getElementById('submit-audit');
+    const exportBtn = document.getElementById('export-excel');
+
+    const isDashboardVisible = 
+        !sectionList.classList.contains('hidden') &&
+        sectionContent.classList.contains('hidden') &&
+        sendEmailSection.classList.contains('hidden');
+    const isDesktop = window.innerWidth > 640;
+
+    if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
+    if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible || !isDesktop);
+}
 
 
 // Custom Popup (Modal)
@@ -319,7 +335,7 @@ if (document.getElementById('section-list')) {
                 card.onclick = () => loadSection(section);
                 sectionList.appendChild(card);
             });
-
+        updateButtons();
             
     if (submitButton) {
         submitButton.classList.remove('hidden');
@@ -1863,15 +1879,25 @@ document.addEventListener("DOMContentLoaded", () => {
     const sectionContent = document.getElementById('section-content');
     const sendEmailSection = document.getElementById('send-email-section');
 
-    function updateButtons() {
-        const isDashboardVisible =
-            !sectionList.classList.contains('hidden') &&
-            sectionContent.classList.contains('hidden') &&
-            sendEmailSection.classList.contains('hidden');
+    // function updateButtons() {
+    //     const isDashboardVisible =
+    //         !sectionList.classList.contains('hidden') &&
+    //         sectionContent.classList.contains('hidden') &&
+    //         sendEmailSection.classList.contains('hidden');
 
-        if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
-        if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible);
-    }
+    //     if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
+    //     if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible);
+    // }
+
+
+    // Run on load and on navigation
+    document.addEventListener("DOMContentLoaded", updateButtons);
+    document.body.addEventListener("click", (e) => {
+        const id = e.target.id || e.target.closest("button")?.id || "";
+        if (id === "back-to-dashboard" || id === "nav-checklist" || id === "nav-send-email" || id.startsWith("section-")) {
+            setTimeout(updateButtons, 400); // Delay for UI transition
+        }
+    });
 
     // Run once on load
     updateButtons();
