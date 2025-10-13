@@ -72,9 +72,8 @@ function updateButtons() {
     const isDesktop = window.innerWidth > 640;
 
     if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
-    if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible || !isDesktop);
+    if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible); // Ignore isDesktop for now
 }
-
 
 // Custom Popup (Modal)
 function showPopup(message, type = "info", autoClose = true, redirect = null) {
