@@ -10,3 +10,4 @@ fastapi-mail
 python-multipart
 openpyxl
 pillow
+python-docx

@@ -1855,25 +1855,37 @@ function updateButtonVisibility(isDashboard) {
     if (exportButton) exportButton.classList.toggle('hidden', !isDashboard);
 }
 
+// ✅ Ensure button visibility is consistent on page load and navigation
 document.addEventListener("DOMContentLoaded", () => {
-    let timeoutId = null;
+    const submitBtn = document.getElementById('submit-audit');
+    const exportBtn = document.getElementById('export-excel');
+    const sectionList = document.getElementById('section-list');
+    const sectionContent = document.getElementById('section-content');
+    const sendEmailSection = document.getElementById('send-email-section');
 
-    const observer = new MutationObserver(() => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => {
-            const sectionList = document.getElementById('section-list');
-            const submitBtn = document.getElementById('submit-audit');
-            const exportBtn = document.getElementById('export-excel');
+    function updateButtons() {
+        const isDashboardVisible =
+            !sectionList.classList.contains('hidden') &&
+            sectionContent.classList.contains('hidden') &&
+            sendEmailSection.classList.contains('hidden');
 
-            if (!sectionList || !submitBtn || !exportBtn) return;
+        if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
+        if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible);
+    }
 
-            const isDashboardVisible = !sectionList.classList.contains('hidden');
+    // Run once on load
+    updateButtons();
 
-            // ✅ Show/hide buttons correctly
-            submitBtn.classList.toggle('hidden', !isDashboardVisible);
-            exportBtn.classList.toggle('hidden', !isDashboardVisible);
-        }, 300); // debounce delay to avoid rapid flicker
+    // Listen for clicks that change sections
+    document.body.addEventListener("click", (e) => {
+        const id = e.target.id || e.target.closest("button")?.id || "";
+        if (
+            id === "back-to-dashboard" ||
+            id === "nav-checklist" ||
+            id === "nav-send-email" ||
+            id.startsWith("section-")
+        ) {
+            setTimeout(updateButtons, 400); // delay for UI transition
+        }
     });
-
-    observer.observe(document.body, { childList: true, subtree: true });
 });

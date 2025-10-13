@@ -25,27 +25,6 @@
         #video, #photo-canvas { width: 90vw; max-width: 400px; height: auto; border-radius: 12px; border: 1px solid #ccc; background-color: #000; object-fit: cover; }
         #photo-section button { width: 120px; }
 
-        /* Add to your CSS file or <style> tag */
-        @media (max-width: 768px) {
-            /* ✅ Buttons only visible when not hidden */
-            #submit-audit:not(.hidden),
-            #export-excel:not(.hidden) {
-                position: relative !important;
-                z-index: 40 !important;
-                display: block !important;
-            }
-
-            /* ✅ Force hidden when .hidden class is active */
-            #submit-audit.hidden,
-            #export-excel.hidden {
-                display: none !important;
-            }
-
-            .section-content {
-                margin-top: 80px; /* ensure spacing for fixed buttons if needed */
-            }
-        }
-
     </style>
 </head>
 <body class="bg-gray-50 font-sans">
