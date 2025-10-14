@@ -58,7 +58,22 @@ function updateSectionTick(section) {
     }
 }
 
+function updateButtons() {
+    const sectionList = document.getElementById('section-list');
+    const sectionContent = document.getElementById('section-content');
+    const sendEmailSection = document.getElementById('send-email-section');
+    const submitBtn = document.getElementById('submit-audit');
+    const exportBtn = document.getElementById('export-excel');
 
+    const isDashboardVisible = 
+        !sectionList.classList.contains('hidden') &&
+        sectionContent.classList.contains('hidden') &&
+        sendEmailSection.classList.contains('hidden');
+    const isDesktop = window.innerWidth > 640;
+
+    if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
+    if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible); // Ignore isDesktop for now
+}
 
 // Custom Popup (Modal)
 function showPopup(message, type = "info", autoClose = true, redirect = null) {
@@ -211,7 +226,7 @@ if (backToDashboardButton) {
             document.dispatchEvent(new Event('DOMContentLoaded'));
         }
         document.getElementById('submit-audit')?.classList.remove('hidden');
-        document.getElementById('export-word')?.classList.remove('hidden');
+        document.getElementById('export-excel')?.classList.remove('hidden');
 
         toggleSubmitButton();
     };
@@ -319,130 +334,60 @@ if (document.getElementById('section-list')) {
                 card.onclick = () => loadSection(section);
                 sectionList.appendChild(card);
             });
-
-            // const submitButton = document.getElementById('submit-audit');
-            if (submitButton) {
-                submitButton.classList.remove('hidden');
-                submitButton.onclick = async () => {
-                    const allCompleted = Object.values(completionStatus).every(v => v === true);
-                    if (!allCompleted) {
-                        showPopup('Please fill the data for all the sections and save that.');
-                        return;
-                    }
-                    try {
-                        const res = await fetch(`${API_BASE_URL}/api/submit-audit`, {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                            body: JSON.stringify({})
-                        });
-                        const text = await res.text();
-                        let dataRes;
-                        try {
-                            dataRes = JSON.parse(text);
-                        } catch {
-                            showPopup('Failed to submit audit: Invalid server response');
-                            return;
-                        }
-                        if (!res.ok) {
-                            showPopup(dataRes.message || 'Failed to submit audit');
-                            return;
-                        }
-                        // ✅ clear sections but stay on dashboard
-                        showPopup('Audit submitted successfully ✅', 'success');
-                        completionStatus = {};
-                        localStorage.removeItem('completionStatus');
-
-                        // Reload dashboard to reset tick marks
-                        await loadDashboard();
-                    } catch (err) {
-                        console.error('Submit audit error:', err);
-                        showPopup('Error: ' + err.message);
-                    }
-
-                };
+        updateButtons();
+            
+    if (submitButton) {
+        submitButton.classList.remove('hidden');
+        submitButton.onclick = async () => {
+            const allCompleted = Object.values(completionStatus).every(v => v === true);
+            if (!allCompleted) {
+                showPopup('Please fill the data for all the sections and save that.');
+                return;
             }
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/submit-audit`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const text = await res.text();
+                let dataRes;
+                try {
+                    dataRes = JSON.parse(text);
+                } catch {
+                    showPopup('Failed to submit audit: Invalid server response');
+                    return;
+                }
+                if (!res.ok) {
+                    showPopup(dataRes.message || 'Failed to submit audit');
+                    return;
+                }
+                
+                // ✅ Show success message
+                showPopup('Audit submitted successfully ✅', 'success');
+                
+                // ✅ Clear completion status
+                completionStatus = {};
+                localStorage.removeItem('completionStatus');
+
+                // ✅ Clear all section data and green ticks
+                await clearAllSectionData();
+                
+                // Reload dashboard to reset tick marks
+                await loadDashboard();
+                
+            } catch (err) {
+                console.error('Submit audit error:', err);
+                showPopup('Error: ' + err.message);
+            }
+        };
+    }
             toggleSubmitButton();
         } catch (err) {
             console.error('Dashboard error:', err);
             showPopup('Error: ' + err.message);
         }
     }
-
-    // // === EXPORT TO WORD FEATURE ===
-    // const exportBtn = document.getElementById('export-word');
-    // if (exportBtn) {
-    //     exportBtn.onclick = async () => {
-    //         const token = localStorage.getItem('access_token');
-    //         if (!token) {
-    //             showPopup('Please login again before exporting.', 'warning');
-    //             return;
-    //         }
-
-    //         exportBtn.disabled = true;
-    //         exportBtn.textContent = 'Checking...';
-
-    //         try {
-    //             // Step 1: Check if all sections completed
-    //             const resSections = await fetch(`${API_BASE_URL}/api/get-sections`, {
-    //                 headers: { 'Authorization': `Bearer ${token}` }
-    //             });
-    //             const text = await resSections.text();
-    //             let data = {};
-    //             try { data = JSON.parse(text); } catch { data = {}; }
-
-    //             if (!resSections.ok) {
-    //                 showPopup(data.message || 'Unable to validate sections.', 'error');
-    //                 exportBtn.disabled = false;
-    //                 exportBtn.textContent = 'Export to Word';
-    //                 return;
-    //             }
-
-    //             const completion = data.data?.completion_status || {};
-    //             const allCompleted = Object.values(completion).every(v => v === true);
-    //             if (!allCompleted) {
-    //                 showPopup('Please complete all sections before exporting.', 'warning');
-    //                 exportBtn.disabled = false;
-    //                 exportBtn.textContent = 'Export to Word';
-    //                 return;
-    //             }
-
-    //             // Step 2: Trigger backend export
-    //             exportBtn.textContent = 'Preparing Word file...';
-    //             const res = await fetch(`${API_BASE_URL}/api/export-word`, {
-    //                 method: 'GET',
-    //                 headers: { 'Authorization': `Bearer ${token}` }
-    //             });
-
-    //             if (!res.ok) {
-    //                 let msg = await res.text();
-    //                 try { msg = JSON.parse(msg).message; } catch {}
-    //                 showPopup(msg || 'Failed to export file.', 'error');
-    //                 exportBtn.disabled = false;
-    //                 exportBtn.textContent = 'Export to Word';
-    //                 return;
-    //             }
-
-    //             // Step 3: Download file
-    //             const blob = await res.blob();
-    //             const url = window.URL.createObjectURL(blob);
-    //             const a = document.createElement('a');
-    //             a.href = url;
-    //             a.download = 'Audit_Report.docx';
-    //             document.body.appendChild(a);
-    //             a.click();
-    //             a.remove();
-    //             window.URL.revokeObjectURL(url);
-
-    //             showPopup('Download started successfully.', 'success');
-    //         } catch (err) {
-    //             console.error('Export error:', err);
-    //             showPopup('Error exporting: ' + err.message, 'error');
-    //         } finally {
-    //             exportBtn.disabled = false;
-    //             exportBtn.textContent = 'Export to Word';
-    //         }
-    //     };
-    // }
 
     const exportBtn = document.getElementById('export-excel');  // Changed ID
 if (exportBtn) {
@@ -523,12 +468,18 @@ if (exportBtn) {
     window.loadDashboard = loadDashboard;
 
     async function loadSection(section) {
+        // Clear the form content immediately to avoid flickering
         const sectionForm = document.getElementById('section-form');
+        if (sectionForm) {
+            sectionForm.innerHTML = '<p class="text-gray-600">Loading...</p>'; // Temporary loading message to prevent flicker
+        }
+
+        const token = localStorage.getItem('access_token');
+        document.getElementById('section-list')?.classList.add('hidden');
+        document.getElementById('section-content')?.classList.remove('hidden');
         // Hide submit & export when inside a section
         document.getElementById('submit-audit')?.classList.add('hidden');
         document.getElementById('export-excel')?.classList.add('hidden');
-
-        if (sectionForm) sectionForm.classList.remove('hidden');
         
         // 🔒 Always hide both before any section logic runs
         const photoSection = document.getElementById('photo-section');
@@ -544,9 +495,6 @@ if (exportBtn) {
         }
 
 
-        const token = localStorage.getItem('access_token');
-        document.getElementById('section-list')?.classList.add('hidden');
-        document.getElementById('section-content')?.classList.remove('hidden');
         try {
             const res = await fetch(`${API_BASE_URL}/api/get-section/${section}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -568,6 +516,7 @@ if (exportBtn) {
                 return;
             }
 
+            // Now populate the form after fetch
             const form = document.getElementById('section-form');
             form.innerHTML = '';
             let isSaved = false;
@@ -1816,7 +1765,7 @@ document.getElementById('nav-checklist').onclick = () => {
     document.getElementById('section-list').classList.remove('hidden');
 
     document.getElementById('submit-audit')?.classList.remove('hidden');
-    document.getElementById('export-word')?.classList.remove('hidden');
+    document.getElementById('export-excel')?.classList.remove('hidden');
 
 };
 
@@ -1827,73 +1776,9 @@ document.getElementById('nav-send-email').onclick = () => {
 
     // 🔒 Hide Submit and Export buttons when viewing Send Email section
     document.getElementById('submit-audit')?.classList.add('hidden');
-    document.getElementById('export-word')?.classList.add('hidden');
+    document.getElementById('export-excel')?.classList.add('hidden');
 };
 
-// 📨 Send Email Logic
-// const sendEmailForm = document.getElementById('send-email-form');
-// if (sendEmailForm) {
-//     sendEmailForm.onsubmit = async (e) => {
-//         e.preventDefault();
-
-//         const token = localStorage.getItem('access_token');
-//         if (!token) return showPopup('Please login first.', 'warning');
-
-//         const from = document.getElementById('email-from').value.trim();
-//         const to = document.getElementById('email-to').value.trim();
-//         const fileInput = document.getElementById('email-file');
-//         const sendBtn = sendEmailForm.querySelector('button[type="submit"]');
-
-//         // 🌀 Step 1: Add "Sending..." state
-//         sendBtn.disabled = true;
-//         const originalText = sendBtn.textContent;
-//         sendBtn.textContent = "Sending Email...";
-
-//         const formData = new FormData();
-//         formData.append('from_email', from);
-//         formData.append('to_email', to);
-
-//         if (fileInput.files.length > 0) {
-//             formData.append('attachment', fileInput.files[0]);
-//         } else {
-//             formData.append('generate_from_data', 'true');
-//         }
-
-//         try {
-//             const res = await fetch(`${API_BASE_URL}/api/send-email`, {
-//                 method: 'POST',
-//                 headers: { 'Authorization': `Bearer ${token}` },
-//                 body: formData
-//             });
-
-//             const text = await res.text();
-//             let data = {};
-//             try { data = JSON.parse(text); } catch {}
-
-//             // 🧾 Step 2: Restore button + show popup
-//             sendBtn.disabled = false;
-//             sendBtn.textContent = originalText;
-
-//             if (!res.ok) {
-//                 showPopup(data.message || 'Failed to send email', 'error');
-//                 return;
-//             }
-
-//             // ✅ Step 3: Clear form fields after success
-//             document.getElementById('email-from').value = '';
-//             document.getElementById('email-to').value = '';
-//             document.getElementById('email-file').value = '';
-
-//             // 🎉 Step 4: Success popup
-//             showPopup('Email sent successfully ✅', 'success');
-
-//         } catch (err) {
-//             sendBtn.disabled = false;
-//             sendBtn.textContent = originalText;
-//             showPopup('Error sending email: ' + err.message, 'error');
-//         }
-//     };
-// }
 
 const sendEmailForm = document.getElementById('send-email-form');
 if (sendEmailForm) {
@@ -1975,4 +1860,57 @@ document.addEventListener("DOMContentLoaded", () => {
             window.location.href = "/static/login.html";
         });
     }
+});
+
+
+function updateButtonVisibility(isDashboard) {
+    const submitButton = document.getElementById('submit-audit');
+    const exportButton = document.getElementById('export-excel'); // Ensure this matches your HTML ID
+    if (submitButton) submitButton.classList.toggle('hidden', !isDashboard);
+    if (exportButton) exportButton.classList.toggle('hidden', !isDashboard);
+}
+
+// ✅ Ensure button visibility is consistent on page load and navigation
+document.addEventListener("DOMContentLoaded", () => {
+    const submitBtn = document.getElementById('submit-audit');
+    const exportBtn = document.getElementById('export-excel');
+    const sectionList = document.getElementById('section-list');
+    const sectionContent = document.getElementById('section-content');
+    const sendEmailSection = document.getElementById('send-email-section');
+
+    // function updateButtons() {
+    //     const isDashboardVisible =
+    //         !sectionList.classList.contains('hidden') &&
+    //         sectionContent.classList.contains('hidden') &&
+    //         sendEmailSection.classList.contains('hidden');
+
+    //     if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
+    //     if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible);
+    // }
+
+
+    // Run on load and on navigation
+    document.addEventListener("DOMContentLoaded", updateButtons);
+    document.body.addEventListener("click", (e) => {
+        const id = e.target.id || e.target.closest("button")?.id || "";
+        if (id === "back-to-dashboard" || id === "nav-checklist" || id === "nav-send-email" || id.startsWith("section-")) {
+            setTimeout(updateButtons, 400); // Delay for UI transition
+        }
+    });
+
+    // Run once on load
+    updateButtons();
+
+    // Listen for clicks that change sections
+    document.body.addEventListener("click", (e) => {
+        const id = e.target.id || e.target.closest("button")?.id || "";
+        if (
+            id === "back-to-dashboard" ||
+            id === "nav-checklist" ||
+            id === "nav-send-email" ||
+            id.startsWith("section-")
+        ) {
+            setTimeout(updateButtons, 400); // delay for UI transition
+        }
+    });
 });
