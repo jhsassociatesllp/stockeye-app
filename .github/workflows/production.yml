@@ -1,0 +1,68 @@
+name: 🚀 Deploy to Staging (aaPanel - StockEye)
+
+on:
+  push:
+    branches:
+      - staging
+
+jobs:
+  deploy:
+    name: Deploy to aaPanel Staging
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout latest code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2️⃣ Setup SSH
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SERVER_KEY }}
+
+      # 3️⃣ Copy project files to server
+      - name: Copy code to server (staging)
+        run: |
+          echo "📦 Compressing and copying code to /www/wwwroot/StockEye App/stockeye_staging ..."
+          
+          # Create compressed tarball
+          tar -czf package.tar.gz . --exclude='.git' --exclude='venv' --exclude='.env' --warning=no-file-changed || true
+          
+          # Upload tarball
+          scp -P 2232 -o StrictHostKeyChecking=no package.tar.gz \
+              ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:"/www/wwwroot/StockEye App/"
+
+          # Extract and clean up
+          ssh -p 2232 -o StrictHostKeyChecking=no \
+              ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
+              mkdir -p '/www/wwwroot/StockEye App/stockeye_staging' &&
+              tar -xzf '/www/wwwroot/StockEye App/package.tar.gz' -C '/www/wwwroot/StockEye App/stockeye_staging' &&
+              rm -f '/www/wwwroot/StockEye App/package.tar.gz'
+              "
+
+      # 4️⃣ Deploy Docker container on port 8015
+      - name: Deploy Docker container (staging)
+        run: |
+          echo "🐳 Deploying StockEye staging container on port 8015 ..."
+          ssh -p 2232 -o StrictHostKeyChecking=no \
+              ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
+              cd '/www/wwwroot/StockEye App/stockeye_staging' &&
+              
+              # Stop any running container
+              docker stop stockeye_staging || true &&
+              docker rm stockeye_staging || true &&
+              
+              # Bring down any existing docker-compose services
+              docker-compose down || true &&
+              
+              # Build and run container
+              APP_ENV=staging APP_PORT=8015 docker-compose up -d --build &&
+              
+              echo '✅ StockEye staging container restarted successfully' &&
+              docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+              "
+
+      # 5️⃣ Final confirmation
+      - name: Deployment Completed
+        run: echo "🎉 StockEye staging deployment completed successfully on port 8015!"
