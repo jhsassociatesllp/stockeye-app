@@ -928,7 +928,3 @@ async def serve_login():
 @app.get("/register", response_class=FileResponse)
 async def serve_register():
     return FileResponse(os.path.join(STATIC_DIR, "register.html"))
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
