@@ -39,7 +39,7 @@ jobs:
           ssh -p 2232 -o StrictHostKeyChecking=no \
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
               
-              echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+              echo '${{ secrets.GHCR_PAT_TOKEN }}' | docker login ghcr.io -u '${{ secrets.GH_USERNAME }}' --password-stdin
 
               docker pull $IMAGE || exit 1
 
