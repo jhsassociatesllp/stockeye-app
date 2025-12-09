@@ -204,32 +204,6 @@ function toggleSubmitButton() {
 // Global back-to-dashboard handler
 const backToDashboardButton = document.getElementById('back-to-dashboard');
 if (backToDashboardButton) {
-    // backToDashboardButton.onclick = () => {
-    //     document.getElementById('section-content')?.classList.add('hidden');
-    //     document.getElementById('section-list')?.classList.remove('hidden');
-
-    //     document.getElementById('photo-section').classList.add('hidden');
-    //     document.getElementById('signature-section').classList.add('hidden');
-
-    //     // Stop camera stream if active
-    //     const video = document.getElementById('video');
-    //     if (video && video.srcObject) {
-    //         video.srcObject.getTracks().forEach(track => track.stop());
-    //         video.srcObject = null;
-    //     }
-
-    //     if (typeof window.loadDashboard === 'function') {
-    //         window.loadDashboard();
-    //     } else {
-    //         console.warn('loadDashboard not available');
-    //         // fallback: re-trigger initial load flow
-    //         document.dispatchEvent(new Event('DOMContentLoaded'));
-    //     }
-    //     document.getElementById('submit-audit')?.classList.remove('hidden');
-    //     document.getElementById('export-excel')?.classList.remove('hidden');
-
-    //     toggleSubmitButton();
-    // };
     backToDashboardButton.onclick = () => {
         document.getElementById('section-content')?.classList.add('hidden');
         document.getElementById('section-list')?.classList.remove('hidden');
@@ -330,56 +304,6 @@ if (document.getElementById('section-list')) {
                 'signature', 'photo'
             ];
 
-            //     const sectionList = document.getElementById('section-list');
-            //     sectionList.innerHTML = '';
-            //     sections.forEach((section, index) => {
-            //         if (submitButton) submitButton.classList.remove('hidden');
-            //         if (exportBtn) exportBtn.classList.remove('hidden');
-
-            //         const card = document.createElement('div');
-            //         card.className = 'section-card bg-white p-4 rounded-lg shadow-md cursor-pointer';
-            //         card.dataset.section = section; // <- add this so we can find it later
-
-            //         // show title on left and a status-icon container on right
-            //         const title = section.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            //         card.innerHTML = `
-            //         <div class="flex items-center justify-between">
-            //             <h3 class="text-lg font-medium text-gray-800">${title}</h3>
-            //             <span class="status-icon">${ completionStatus[section] ? '<i class="fas fa-check-circle text-green-500"></i>' : '' }</span>
-            //         </div>
-            //         `;
-
-            //         card.onclick = () => loadSection(section);
-            //         sectionList.appendChild(card);
-            //     });
-            // updateButtons();
-
-            // const sectionList = document.getElementById('section-list');
-            // sectionList.innerHTML = '';
-            // sections.forEach((section, index) => {
-            //     if (submitButton) submitButton.classList.remove('hidden');
-            //     if (exportBtn) exportBtn.classList.remove('hidden');
-
-            //     const card = document.createElement('div');
-            //     card.className = 'section-card bg-white p-4 rounded-lg shadow-md cursor-pointer';
-            //     card.dataset.section = section;
-
-            //     // Show title on left and a status-icon container on right
-            //     const title = section.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            //     // Only show green tick if section is completed and not in post-submission state
-            //     const isPostSubmission = Object.keys(completionStatus).length === 0; // Check if reset
-            //     card.innerHTML = `
-            //         <div class="flex items-center justify-between">
-            //             <h3 class="text-lg font-medium text-gray-800">${title}</h3>
-            //             <span class="status-icon">${!isPostSubmission && completionStatus[section] ? '<i class="fas fa-check-circle text-green-500"></i>' : ''}</span>
-            //         </div>
-            //     `;
-
-            //     card.onclick = () => loadSection(section);
-            //     sectionList.appendChild(card);
-            // });
-            // updateButtons();
-
             const sectionList = document.getElementById('section-list');
             sectionList.innerHTML = '';
             sections.forEach((section, index) => {
@@ -389,7 +313,6 @@ if (document.getElementById('section-list')) {
 
                 const title = section.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                 // Prevent green ticks if postSubmission is true
-
                 const isPostSubmission = postSubmission || Object.keys(completionStatus).length === 0;
                 card.innerHTML = `
                 <div class="flex items-center justify-between">
@@ -404,57 +327,6 @@ if (document.getElementById('section-list')) {
             updateButtons();
             toggleSubmitButton();
 
-            // if (submitButton) {
-            //     submitButton.classList.remove('hidden');
-            //     submitButton.onclick = async () => {
-            //         const allCompleted = Object.values(completionStatus).every(v => v === true);
-            //         if (!allCompleted) {
-            //             showPopup('Please fill the data for all the sections and save that.');
-            //             return;
-            //         }
-            //         try {
-            //             const res = await fetch(`${API_BASE_URL}/api/submit-audit`, {
-            //                 method: 'POST',
-            //                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            //                 body: JSON.stringify({})
-            //             });
-            //             const text = await res.text();
-            //             let dataRes;
-            //             try {
-            //                 dataRes = JSON.parse(text);
-            //             } catch {
-            //                 showPopup('Failed to submit audit: Invalid server response');
-            //                 return;
-            //             }
-            //             if (!res.ok) {
-            //                 showPopup(dataRes.message || 'Failed to submit audit');
-            //                 return;
-            //             }
-
-            //             // ✅ Show success message
-            //             showPopup('Audit submitted successfully ✅', 'success');
-
-            //             // ✅ Clear completion status
-            //             completionStatus = {};
-            //             localStorage.removeItem('completionStatus');
-
-            //             // ✅ Clear all section data and green ticks
-            //             await clearAllSectionData();
-
-            //             // Reload dashboard to reset tick marks
-            //             await loadDashboard();
-
-            //         } catch (err) {
-            //             console.error('Submit audit error:', err);
-            //             showPopup('Error: ' + err.message);
-            //         }
-            //     };
-            // }
-            //         toggleSubmitButton();
-            //     } catch (err) {
-            //         console.error('Dashboard error:', err);
-            //         showPopup('Error: ' + err.message);
-            //     }
             if (submitButton) {
                 submitButton.classList.remove('hidden');
                 submitButton.onclick = async () => {
@@ -641,7 +513,6 @@ if (document.getElementById('section-list')) {
             // Now populate the form after fetch
             const form = document.getElementById('section-form');
             form.innerHTML = '';
-            let isSaved = false;
             const sectionData = data.data.section_data || {};
 
             // ---------- GENERAL REPORT (existing) ----------
@@ -712,7 +583,6 @@ if (document.getElementById('section-list')) {
                         <input type="number" id="capacity_utilization" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required min="0" max="100" step="0.01">
                     </div>
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                    <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                 `;
                 // Populate data
                 document.getElementById('audit_date').value = sectionData.audit_date || '';
@@ -770,7 +640,6 @@ if (document.getElementById('section-list')) {
                     </div>
                     <div class="mt-4">
                         <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                        <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                     </div>
                 `;
 
@@ -907,8 +776,6 @@ if (document.getElementById('section-list')) {
             }
 
             else if (section === 'observations_on_stacking') {
-                // document.getElementById('photo-section').classList.add('hidden');
-                // document.getElementById('signature-section')?.classList.add('hidden');
                 const questions = [
                     "Whether the appearance of the stored stocks is neat and free from dust/stains of oil, rust, cracks etc.?",
                     "Whether Packaging condition of stock deposited is as per MCXCCL norms/ procedure guidelines/ relevant circulars as mentioned below? Cotton - Circular no. MCXCCL/WHL/249/2023 dated October 16, 2023 Mentha Oil- Circular no. MCXCCL/WHL/141/2021 dated May 31, 2021 Aluminium: Circular no. MCXCCL/WHL/045/2023 dated February 16, 2023 Lead: Circular no. MCXCCL/WHL/220/2023 dated September 15, 2023 Copper: Circular no. MCXCCL/WHL/868/2020 dated November 23, 2020 Zinc: Circular no. MCXCCL/WHL/044/2023 dated February 16, 2023 Nickel: Circular no. MCXCCL/WHL/868/2020 dated November 23, 2020 Note: any subsequent circular issued for above mentioned commodity shall be referred for compliance Metal & Cotton - no straps should be broken in exchange deliverable stocks",
@@ -946,7 +813,6 @@ if (document.getElementById('section-list')) {
                 });
                 form.innerHTML += `
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                    <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                 `;
                 // Populate data
                 if (sectionData.questions && sectionData.questions.length === questions.length) {
@@ -957,8 +823,6 @@ if (document.getElementById('section-list')) {
                     });
                 }
             } else if (section === 'observations_on_warehouse_operations') {
-                // document.getElementById('photo-section').classList.add('hidden');
-                // document.getElementById('signature-section')?.classList.add('hidden');
                 const questions = [
                     "Whether custody of Navtal brand lock and key of the warehouse/godown is with WSP/WH Owner/others? (Pls specify) Whether additional key of Warehouse available at WSP Head office/WSP regional office and details are updated in Key distribution register?",
                     "Does the WSP use Navtal brand lock seals at every lock of all shutters which are used for transaction of goods? Whether seal details are captured in register.",
@@ -1002,7 +866,6 @@ if (document.getElementById('section-list')) {
                 });
                 form.innerHTML += `
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                    <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                 `;
                 // Populate data
                 if (sectionData.questions && sectionData.questions.length === questions.length) {
@@ -1013,8 +876,6 @@ if (document.getElementById('section-list')) {
                     });
                 }
             } else if (section === 'observations_on_warehouse_record_keeping') {
-                // document.getElementById('photo-section').classList.add('hidden');
-                // document.getElementById('signature-section')?.classList.add('hidden');
                 const questions = [
                     "Whether copy of KYD with requisite documents available for all beneficiaries/depositors at warehouse? Mention the names of depositor(s) incase of incomplete documents.",
                     "Are the soft copy/digital signed copy/original DTD with requisite documents available at warehouse? Mention the names of depositors incase of incomplete documents.",
@@ -1046,7 +907,6 @@ if (document.getElementById('section-list')) {
                 });
                 form.innerHTML += `
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                    <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                 `;
                 // Populate data
                 if (sectionData.questions && sectionData.questions.length === questions.length) {
@@ -1057,8 +917,6 @@ if (document.getElementById('section-list')) {
                     });
                 }
             } else if (section === 'observations_on_wh_infrastructure') {
-                // document.getElementById('photo-section').classList.add('hidden');
-                // document.getElementById('signature-section')?.classList.add('hidden');
                 const questions = [
                     "Warehouse condition (both internal/external) is in sound and store worthy condition?",
                     "Is there any roof leakage / Infrastructure damage? If Yes, whether the incident record updated with details?",
@@ -1095,7 +953,6 @@ if (document.getElementById('section-list')) {
                 });
                 form.innerHTML += `
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                    <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                 `;
                 // Populate data
                 if (sectionData.questions && sectionData.questions.length === questions.length) {
@@ -1106,8 +963,6 @@ if (document.getElementById('section-list')) {
                     });
                 }
             } else if (section === 'observations_on_quality_operation') {
-                // document.getElementById('photo-section').classList.add('hidden');
-                // document.getElementById('signature-section')?.classList.add('hidden');
                 const questions = [
                     "Is cotton bales moisture meter in working condition or Not? If not then has the same been recorded in incident register available at warehouse?",
                     "Is moisture meter available at warehouse?",
@@ -1135,7 +990,6 @@ if (document.getElementById('section-list')) {
                 });
                 form.innerHTML += `
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                    <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                 `;
                 // Populate data
                 if (sectionData.questions && sectionData.questions.length === questions.length) {
@@ -1146,8 +1000,6 @@ if (document.getElementById('section-list')) {
                     });
                 }
             } else if (section === 'checklist_wrt_exchange_circular_mentha_oil') {
-                // document.getElementById('photo-section').classList.add('hidden');
-                // document.getElementById('signature-section')?.classList.add('hidden');
                 const questions = [
                     "Any records available regarding person visits to depositor place for weighing the empty drums?",
                     "Are there any proof / records available stating that the empty drum Weighment is done on calibrated weighbridge or weighing scale?",
@@ -1177,7 +1029,6 @@ if (document.getElementById('section-list')) {
                 });
                 form.innerHTML += `
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                    <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                 `;
                 // Populate data
                 if (sectionData.questions && sectionData.questions.length === questions.length) {
@@ -1188,8 +1039,6 @@ if (document.getElementById('section-list')) {
                     });
                 }
             } else if (section === 'checklist_wrt_mcxCCL_circular_metal') {
-                // document.getElementById('photo-section').classList.add('hidden');
-                // document.getElementById('signature-section')?.classList.add('hidden');
                 const questions = [
                     "Whether the Certificate of Analysis (CoA) of the producer at the time of deposits with containing details like Brand name of the associated lots, Producer’s name, Batch No & certificate date been collected by warehouse?",
                     "Whether the packing list for deposited goods are available as per the latest circular or not with following details; - Contains net weight - Contains gross weight - Contains batch no - No. of units in bundles/lot.",
@@ -1220,7 +1069,6 @@ if (document.getElementById('section-list')) {
                 });
                 form.innerHTML += `
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                    <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                 `;
                 // Populate data
                 if (sectionData.questions && sectionData.questions.length === questions.length) {
@@ -1231,8 +1079,6 @@ if (document.getElementById('section-list')) {
                     });
                 }
             } else if (section === 'checklist_wrt_mcxCCL_circular_cotton_bales') {
-                // document.getElementById('photo-section').classList.add('hidden');
-                // document.getElementById('signature-section')?.classList.add('hidden');
                 const questions = [
                     "Whether bales have all the proper markings in the form of unique press running number (PRN) Whether every bale has a label giving details of variety weight, crop year when checked randomly? And any other details as may be required from time to time? Does each bale have a label / sticker giving the bale number in figures along with ginner details?",
                     "Whether warehouse has put in a deposit stamp / sticker, containing the date of deposit of the goods on each bale deposited?",
@@ -1257,7 +1103,6 @@ if (document.getElementById('section-list')) {
                 });
                 form.innerHTML += `
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                    <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                 `;
                 // Populate data
                 if (sectionData.questions && sectionData.questions.length === questions.length) {
@@ -1272,7 +1117,6 @@ if (document.getElementById('section-list')) {
             else if (section === 'signature') {
                 const sectionForm = document.getElementById('section-form');
                 if (sectionForm) sectionForm.classList.add('hidden');
-                // document.getElementById('section-form').innerHTML = '';
                 document.getElementById('signature-section').classList.remove('hidden');
                 document.getElementById('photo-section').classList.add('hidden');
 
@@ -1373,7 +1217,6 @@ if (document.getElementById('section-list')) {
 
                 let mapsUrl = ""; // ✅ declare globally for photo section
 
-                // document.getElementById('section-form').innerHTML = '';
                 document.getElementById('photo-section').classList.remove('hidden');
                 document.getElementById('signature-section').classList.add('hidden');
 
@@ -1580,30 +1423,7 @@ if (document.getElementById('section-list')) {
                 form.innerHTML = `
                     <p class="text-gray-600">Placeholder for future questions.</p>
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                    <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
                 `;
-            }
-
-            // Handle saved state
-            isSaved = completionStatus[section] || false;
-            const allInputs = form.querySelectorAll('input, select, textarea');
-            if (isSaved) {
-                allInputs.forEach(inp => inp.disabled = true);
-                const saveButton = document.getElementById('save-section');
-                const editButton = document.getElementById('edit-section');
-                if (saveButton) saveButton.classList.add('hidden');
-                if (editButton) editButton.classList.remove('hidden');
-            }
-
-            // Edit button
-            const editButton = document.getElementById('edit-section');
-            if (editButton) {
-                editButton.onclick = () => {
-                    allInputs.forEach(inp => inp.disabled = false);
-                    const saveButton = document.getElementById('save-section');
-                    if (saveButton) saveButton.classList.remove('hidden');
-                    editButton.classList.add('hidden');
-                };
             }
 
             const saveButton = document.getElementById('save-section');
@@ -1649,7 +1469,7 @@ if (document.getElementById('section-list')) {
             data.delivery_centre = deliveryCentre;
             data.time_in = timeIn;
             data.time_out = timeOut;
-            data.working_hours = working_hours;
+            data.working_hours = workingHours;
             data.warehouse_address = warehouseAddress;
             data.warehouse_name = warehouseName;
             data.auditor_name = auditorName;
@@ -2000,17 +1820,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const sectionContent = document.getElementById('section-content');
     const sendEmailSection = document.getElementById('send-email-section');
 
-    // function updateButtons() {
-    //     const isDashboardVisible =
-    //         !sectionList.classList.contains('hidden') &&
-    //         sectionContent.classList.contains('hidden') &&
-    //         sendEmailSection.classList.contains('hidden');
-
-    //     if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
-    //     if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible);
-    // }
-
-
     // Run on load and on navigation
     document.addEventListener("DOMContentLoaded", updateButtons);
     document.body.addEventListener("click", (e) => {
@@ -2038,291 +1847,6 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 
-async function loadSection(section) {
-    const sectionForm = document.getElementById('section-form');
-    const sectionList = document.getElementById('section-list');
-    const sectionContent = document.getElementById('section-content');
-    const photoSection = document.getElementById('photo-section');
-    const signatureSection = document.getElementById('signature-section');
-
-    // Reset UI
-    if (sectionForm) {
-        sectionForm.innerHTML = '<p class="text-gray-600">Loading...</p>';
-        sectionForm.classList.remove('hidden');
-    }
-    if (sectionList) sectionList.classList.add('hidden');
-    if (sectionContent) sectionContent.classList.remove('hidden');
-    if (photoSection) photoSection.classList.add('hidden');
-    if (signatureSection) signatureSection.classList.add('hidden');
-
-    // Hide submit & export buttons
-    document.getElementById('submit-audit')?.classList.add('hidden');
-    document.getElementById('export-excel')?.classList.add('hidden');
-
-    // Stop camera if active
-    const video = document.getElementById('video');
-    if (video && video.srcObject) {
-        video.srcObject.getTracks().forEach(track => track.stop());
-        video.srcObject = null;
-    }
-
-    try {
-        const token = localStorage.getItem('access_token');
-        if (!token) {
-            showPopup('Session expired. Please log in again.', 'warning');
-            window.location.href = '/static/login.html';
-            return;
-        }
-
-        const res = await fetch(`${API_BASE_URL}/api/get-section/${section}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const text = await res.text();
-        console.log(`Get-section ${section} response:`, { status: res.status, body: text });
-
-        let data;
-        try {
-            data = JSON.parse(text);
-        } catch {
-            console.error(`Failed to parse /get-section/${section} response:`, text);
-            showPopup('Failed to load section: Invalid server response', 'error');
-            data = { data: { section_data: {} } }; // Fallback to empty data
-        }
-
-        if (!res.ok) {
-            showPopup(data.message || `Failed to load ${section}`, 'error');
-            data = { data: { section_data: {} } }; // Fallback to empty data
-        }
-
-        const form = document.getElementById('section-form');
-        let isSaved = completionStatus[section] || false;
-        const sectionData = data.data.section_data || {};
-
-        // Define questions for each section to ensure they are always rendered
-        const sectionQuestions = {
-            'observations_on_stacking': [
-                "Whether the appearance of the stored stocks is neat and free from dust/stains of oil, rust, cracks etc.?",
-                "Whether Packaging condition of stock deposited is as per MCXCCL norms/ procedure guidelines/ relevant circulars as mentioned below? Cotton - Circular no. MCXCCL/WHL/249/2023 dated October 16, 2023 Mentha Oil- Circular no. MCXCCL/WHL/141/2021 dated May 31, 2021 Aluminium: Circular no. MCXCCL/WHL/045/2023 dated February 16, 2023 Lead: Circular no. MCXCCL/WHL/220/2023 dated September 15, 2023 Copper: Circular no. MCXCCL/WHL/868/2020 dated November 23, 2020 Zinc: Circular no. MCXCCL/WHL/044/2023 dated February 16, 2023 Nickel: Circular no. MCXCCL/WHL/868/2020 dated November 23, 2020 Note: any subsequent circular issued for above mentioned commodity shall be referred for compliance Metal & Cotton - no straps should be broken in exchange deliverable stocks",
-                "Whether the stacking of the stock is done as per WDRA guidelines (as applicable) or as per MCXCCL? Whether stock is in countable position, stacking done appropriately & is there any co-mingling of lots?",
-                "Whether adequate alleyways & gangways between stacks & wall to stacks are kept for easy movement, aeration & chemical treatments, physical verification, etc.?",
-                "Whether proper stack layout / stacks plan displayed at warehouse floor?",
-                "Whether lot cards in WSP format are placed on all the stored stocks with up to date entries of all transactions within two working days of transaction/receipt creation?",
-                "Whether overwriting / corrections are found in lot cards?",
-                "Whether suitable dunnage material, as per good warehousing practices available (except mentha oil/ metals) for stored goods?",
-                "Whether lot sealing/drum/drum sealing (for Mentha Oil) for all lots/drums deposited /retested is done within two working days of transaction?",
-                "Whether the Warehouse staff has checked the seal intactness of stocks every month? (Pls verify lot seal register & Monthly declaration stating seals have been checked)",
-                "Is there any spillage or damage material lying spread across the stack or floor? If yes, whether the same is appropriately packed and is kept in demarcated area on the same day?",
-                "Is there a designated area inside the warehouse mentioning the floor area in square feet/meter for FED goods, rejected goods and non-Exchange goods available for storage in the warehouse?",
-                "Is any FED Stock lying for more than 3 months? / Any rejected stock lying in warehouse? If Yes, whether marking/ tagging/placard on such lot card or Stock and follow-up with client for lifting of such stocks is done by WSP?",
-                "Is any stock of identical (exchange grade) agri commodity,for which MCXCCL has accredited the warehouse, stored in the warehouse?",
-                "Is there any other agri commodity which is not in the WDRA registration certificate, stored in the warehouse?",
-                "Has WSP stored its ‘own’ commodity in the warehouse?",
-                "Is any stock of identical non-agri commodity stored in MCXCCL accredited Metal warehouse Other than approved commodity?",
-                "Whether visual demarcation between MCX deliverable, Non-exchange & Rejected stock is done or not?",
-                "In case Non Exchange stock kept in MCXCCL accredited capacity is it kept with clear demarcation?",
-                "Whether details like hypothecation / lien / pledge to any financial institutions for the purpose of funding has been displayed on the stock and the same has been recorded?",
-                "Whether non exchange goods stored in accredited space and approval from MCXCCL is taken and available at warehouse?"
-            ],
-            'observations_on_warehouse_operations': [
-                "Whether custody of Navtal brand lock and key of the warehouse/godown is with WSP/WH Owner/others? (Pls specify) Whether additional key of Warehouse available at WSP Head office/WSP regional office and details are updated in Key distribution register?",
-                "Does the WSP use Navtal brand lock seals at every lock of all shutters which are used for transaction of goods? Whether seal details are captured in register.",
-                "Does the warehouse change Navtal brand locks every six months in June and December? Verify the serial number of lock and key, date when it was last changed.",
-                "Specify the number of WH staffs deployed at the warehouse/warehouse complex.",
-                "Indicate number of security guards deployed shift wise.",
-                "Mention name of the Security Agency offering security services at the WH.",
-                "Whether WH staff and Security personnel carrying their identity cards, and are in proper uniform and with baton, torch, whistle etc? Whether security guards checks for any presence of matchbox, gas lighter, chemicals and inflammable items of person entering the warehouse?",
-                "Whether security guard stays inside or outside the warehouse premises?",
-                "Whether there are proper night lighting in warehouse premises for the security purpose?",
-                "Whether proper WSP Sign Board (flex/board/wall-painting) and sign board of MCXCCL accreditation with WSP contact details, No Smoking signage in local dialect, emergency numbers, unauthorized entry, unauthorized parking etc are displayed?",
-                "Whether the board of “Complaint/feedback register available at warehouse” is displayed at the warehouse? (Pls mention the place of display of the board)",
-                "Whether Fire Fighting equipment available as per the WDRA guidelines? Please specify below; a. No. of Fire Extinguishers b. No. of Sand Buckets c. Capacity of water tank available as per operational guidelines? d. Is water pump attached to storage tank with hose pipe? e. Availability of water fire hydrant points/sprinkler system for Cotton Bales. f. Whether fire extinguishers are valid & in working condition? Are the expiry dates/next-due date clearly visible?",
-                "Whether the warehouse staff have undergone the training of fire safety & handling of firefighting equipment from the date of joining? (Please verify with records)",
-                "Whether mock drill for fire fighting is conducted at least once in a year? Verify the record of mock drill.",
-                "Is the Warehouse Manager/ Supervisor of the WSP trained in handling warehousing operations, specifically for MCXCCL? Is the skill enhancement training given to the staff in an interval of 6 months? Verify the training record.",
-                "Whether the security personnel have undergone training on fire safety & handling of firefighting equipment from the date of joining? (verify with records and frequency) Mention the name of the official by whom training is provided. Is the follow up training provided on annual basis to the warehouse staff by the WSP?",
-                "Is the arrangement for Prophylactic Measures for Pest Control available at the WH as per WDRA guidelines? (Verify the records of the treatment)",
-                "Is anti-termite treatment at cotton bales warehouses conducted through MCXCCL specified agencies? (Verify the records of the treatment).",
-                "Whether Live Electricity connection found inside the godown where cotton is stored?",
-                "Is the WSP using electricity for weighment purpose only at Mentha oil and metals at warehouses?",
-                "Whether Storage of hazardous Stock (Like fertilizer, Cement, Chemical etc.) in warehouse premises is done that may affect exchange deliverable stock?",
-                "Whether LPG cylinder kept inside warehouse or outside warehouse? (Applicable for Mentha oil)",
-                "Availability of functional, Valid and calibrated weighbridge (Inside / Outside complex)-for base metals – 3 /5 MT capacity (Yes/No) Name of weighbridge/manual weigh scale –WB capacity (MT)- Expiry date of calibration A B C",
-                "Is a written consent of client and approval from MCXCCL sought in case weighment of the commodity is done on any other weighbridge when MCXCCL approved weighbridges are non-functional?",
-                "Whether the list of weighbridge (accredited weighbridge for cotton bales) along with calibration certificate displayed in the warehouse?",
-                "Whether periodic stock audit done by Independent team other than of the same warehouse deployed staffs? (verify with visitor register at the warehouse)",
-                "Whether the storage structure (warehouse) is far away (150 meter) from the source of fire-hazard, such as timber stores, petrol/CNG/PNG pumping stations/LPG bottling plant?"
-            ],
-            'observations_on_warehouse_record_keeping': [
-                "Whether copy of KYD with requisite documents available for all beneficiaries/depositors at warehouse? Mention the names of depositor(s) incase of incomplete documents.",
-                "Are the soft copy/digital signed copy/original DTD with requisite documents available at warehouse? Mention the names of depositors incase of incomplete documents.",
-                "Whether eNWR/E-receipt is generated based on receipt of original DTD/ photo copy/ DTD Digitally signed by the beneficiary client/ depositor?",
-                "Whether the following registers are available and updated at Warehouse or not? Are the records kept in safe custody with lock facility? • Warehouse opening-closing Register • Daily Transaction Register • Complaint Register • Stack wise/Lot wise register Physical/Electronic form • PV Register • Instrument/Equipment Internal Calibration Register • Gate in gate out cum Visitor Register • Spot Rejection Register • Sample register • Incidence records /Notices register • Lien register • Pest control activity register • Key distribution register",
-                "Whether any Overwriting/correction is found in the above Registers? If yes, check whether approval from WSP HO has been obtained or not",
-                "Whether the transaction wise weighbridge receipts for deposit/withdrawal are available at the warehouse or not?",
-                "Whether the Commodity deposits & all required documents along with original delivery orders withdrawal document are available at warehouse or not?",
-                "Whether WSP has taken approval from MCXCCL for storage of partial lot created out of overload of lorry in a demarcated area?",
-                "Whether separate entries are done for Exchange & Non-Exchange stock?",
-                "Whether a copy of updated WSP SOP and warehouse operations manual available at the warehouse?",
-                "Whether the Warehouse is registered under relevant State/ Central Warehousing Authority/Gram Panchyat? If Yes, License copy to be available at warehouse.",
-                "Whether the Warehouse License copy/ WDRA registration copy is available and displayed at the warehouse?",
-                "Whether lot wise beneficiary details and electronic receipts available at the warehouse either in electronic or printed form?",
-                "Whether the valid stocks are as per CCRL/Comris system record?",
-                "Whether warehouse maintains Weighment slip for record for all commodities during inward and outward movement?"
-            ],
-            'observations_on_wh_infrastructure': [
-                "Warehouse condition (both internal/external) is in sound and store worthy condition?",
-                "Is there any roof leakage / Infrastructure damage? If Yes, whether the incident record updated with details?",
-                "Whether the warehouse is well-protected by pucca boundary wall / barbed wire fencing?",
-                "Whether warehouse is having good drivable approach road & adequate parking space for vehicles?",
-                "Whether flooring is even without major cracks / crevices/ dampness or required major structural repairing?",
-                "Whether hygiene & cleanliness inside the warehouse & premises and vegetation cleaning surrounding the warehouse maintained? Whether dusting of stock, cleaning of bird droppings on stacks, floor cleaning and any minor/major structural repair conducted on a periodic basis? Is the record of the house keeping maintained?",
-                "Whether any infestation by termites/ white ants and rodents in the buildings and warehouse premises is noticed? Whether annual termite treatment record is maintained at cotton/kapas warehouse? Whether termite treatment certificate is available at cotton/kapas warehouse?",
-                "Whether rat cages are placed inside the warehouse? Whether rodenticides used to control rodents?",
-                "Whether surveillance cameras (CCTV) are installed at the warehouse?",
-                "Whether warehouse maintains 90 days CCTV footage of surveillance? mention the date from which CCTV footage is available.",
-                "Whether the cctv camera positioned towards weighment scale inside the warehouse? Verify the cctv footage.",
-                "Whether Handling equipment available?",
-                "Whether the walls are properly plastered and painted/white washed and are free from cracks and crevices?",
-                "Whether adequate ventilators and air inlets are available? (Mention no. of ventilators and air inlets)",
-                "Whether the WH office is inside the godown? (not acceptable for cotton)",
-                "Mention type of Flooring: Concrete / Stones / Tiles / trimix/ Bricks flooring (Mentha Oil WH) /No flooring/Other",
-                "Whether the warehouse has adequate plinth (elevation from ground level) as per WDRA norm?",
-                "Whether there are adequate arrangements for drainage of rainwater to avoid flooding?",
-                "Whether load bearing capacity certificate available at warehouse? (in case of metal warehouse)",
-                "Whether Sufficient office space available for equipment viz. computers with internet facility, telephone and furniture (table, chairs almirah, etc.)"
-            ],
-            'observations_on_quality_operation': [
-                "Is cotton bales moisture meter in working condition or Not? If not then has the same been recorded in incident register available at warehouse?",
-                "Is moisture meter available at warehouse?",
-                "Last calibrated on …………. (dd/mm/yyyy)",
-                "Is inward /outward moisture checked or not? (lot wise moisture record) in case of cotton",
-                "Are necessary sampling details updated on sample tag within one working day? (Name of warehouse, date of sampling, stack no, lot No.)",
-                "Is Reference sample duly sealed & signed by the WH official/in charge?",
-                "Is signature of beneficiary/Client or authorized personal of the client is taken on reference sample?",
-                "Is the sample storage area secure and demarcated? Are the samples kept in rack / pallet / in Almirah or trunk in the sample storage area?",
-                "Whether Reference samples with all relevant details kept in proper custody until the lot is present in the warehouse?",
-                "Is record for courier of samples to the assayer available?",
-                "Do the Goods stored come into direct contact with water or excess moisture which can be detrimental to its usability or quality?"
-            ],
-            'checklist_wrt_exchange_circular_mentha_oil': [
-                "Any records available regarding person visits to depositor place for weighing the empty drums?",
-                "Are there any proof / records available stating that the empty drum Weighment is done on calibrated weighbridge or weighing scale?",
-                "Whether the white sticker is non-tearable and non-removable?",
-                "Whether sticker is signed and date mentioned with permanent marker?",
-                "Any Drums accepted without white stickers?",
-                "Whether any record of preliminary testing is available or not?",
-                "Whether the weight of the Mentha Oil in drum is 180 kg Net or within tolerance limit of 1% (i.e. +/- 1.8 Kg) as prescribed in Procedure for dealing with Mentha oil? Check the weight randomly",
-                "Whether the lot numbers are mentioned on drums with permanent marker?",
-                "Whether the drums in same lot are kept together and traceable?",
-                "Whether any record available for revalidation? (If any)",
-                "Is any undertaking taken from the Beneficiary/Client, if required or applicable?",
-                "In case of damaged/leaked drums, whether the drum is changed immediately & record of the same is maintained/updated in incidence register?",
-                "Whether the firm/ company depositing Mentha Oil is registered in the respective local Mandi? (verify the records)"
-            ],
-            'checklist_wrt_mcxCCL_circular_metal': [
-                "Whether the Certificate of Analysis (CoA) of the producer at the time of deposits with containing details like Brand name of the associated lots, Producer’s name, Batch No & certificate date been collected by warehouse?",
-                "Whether the packing list for deposited goods are available as per the latest circular or not with following details; - Contains net weight - Contains gross weight - Contains batch no - No. of units in bundles/lot.",
-                "Whether the copy of Invoice available for all deposits?",
-                "Whether the copy of Certificate of Origin and Custom clearance documents are available in case of Imported goods or not?",
-                "Whether the producer’s sticker is available or not on each ingots/ bundle?",
-                "Whether the following details are mentioned in sticker or not? • Producer/ manufacturer name • Net Weight • Batch No (printed/sticker/stenciled/laser?) • Purity • Date of Manufacturing/ Production • Number of Pieces of Ingots/ sheets in each bundle",
-                "Whether batch number/lot number is hand written?",
-                "Whether the Ingots/ bundle are physically sound and free of harmful/ any defects? (such as segregation, piping, spilt /broken, inclusions or visible contamination of metal)",
-                "Whether mixing of bundle(s) of different brands are observed?",
-                "Whether the annual Inspection of electrical points done or not? Check the record.",
-                "In case, more than 1 strap is broken, whether re-strapping is done every 07 working days from the date of strap broken & record of the strap break and re-strapping is maintained? In incidence register?",
-                "Same commodity non-exchange goods shall not be kept mingled in the same warehouse which is used for MCXCCL purposes.",
-                "Whether all re-mated stock physically delivered from the warehouse and not stored as non-exchange/professional goods.",
-                "Is there any sign of corrosion in stored stocks?"
-            ],
-            'checklist_wrt_mcxCCL_circular_cotton_bales': [
-                "Whether bales have all the proper markings in the form of unique press running number (PRN) Whether every bale has a label giving details of variety weight, crop year when checked randomly? And any other details as may be required from time to time? Does each bale have a label / sticker giving the bale number in figures along with ginner details?",
-                "Whether warehouse has put in a deposit stamp / sticker, containing the date of deposit of the goods on each bale deposited?",
-                "Forklift – battery operated or fuel operated?",
-                "Placement of the Firefighting equipment? Inside the godown or outside? (Placement inside the godown is not allowed)",
-                "Proximity to source of fire hazard if any. whether any fire-risk is noticed in close vicinity of the warehouse? Mention the approximate distance of source of fire risk.",
-                "Whether cotton samples are stored inside the godown?",
-                "Whether opening and closing of cotton godown is done under supervision of Warehouse Manager and the register maintained indicating the purpose of opening and date and time of opening/closing?",
-                "In case, more than 3 straps of bales are broken, whether re-strapping of the bales is done within 10 working days from the date of strap broken & record of the strap break and re-strapping is maintained? In incidence register?"
-            ]
-        };
-
-        // Render sections
-        if (section === 'general_report') {
-            // ... (keep your existing general_report rendering logic)
-        } else if (section === 'stock_reconciliation') {
-            // ... (keep your existing stock_reconciliation rendering logic)
-        } else if (sectionQuestions[section]) {
-            form.innerHTML = ''; // Clear form
-            const questions = sectionQuestions[section];
-            questions.forEach((q, i) => {
-                form.innerHTML += `
-                    <div class="mb-4">
-                        <label class="block text-gray-800 font-medium mb-2">${i + 1}. ${q} <span class="mandatory-star">*</span></label>
-                        <div class="flex space-x-4 mb-2">
-                            <label><input type="radio" name="q${i}" value="Yes" required> Yes</label>
-                            <label><input type="radio" name="q${i}" value="No"> No</label>
-                        </div>
-                        <input type="text" id="remarks${i}" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Remarks">
-                    </div>
-                `;
-            });
-            form.innerHTML += `
-                <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
-            `;
-            // Populate data
-            if (sectionData.questions && sectionData.questions.length === questions.length) {
-                sectionData.questions.forEach((qd, i) => {
-                    const radio = document.querySelector(`input[name="q${i}"][value="${qd.answer}"]`);
-                    if (radio) radio.checked = true;
-                    document.getElementById(`remarks${i}`).value = qd.remarks || '';
-                });
-            }
-        } else if (section === 'signature') {
-            // ... (keep signature logic)
-        } else if (section === 'photo') {
-            // ... (keep photo logic)
-        } else {
-            form.innerHTML = `
-                <p class="text-gray-600">Placeholder for future questions.</p>
-                <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
-                <button type="button" id="edit-section" class="w-full bg-gray-300 text-gray-800 p-2.5 rounded-lg mt-2 hidden">Edit</button>
-            `;
-        }
-
-        // Handle saved state
-        isSaved = completionStatus[section] || false;
-        const allInputs = form.querySelectorAll('input, select, textarea');
-        if (isSaved) {
-            allInputs.forEach(inp => inp.disabled = true);
-            const saveButton = document.getElementById('save-section');
-            const editButton = document.getElementById('edit-section');
-            if (saveButton) saveButton.classList.add('hidden');
-            if (editButton) editButton.classList.remove('hidden');
-        }
-
-        // Edit button
-        const editButton = document.getElementById('edit-section');
-        if (editButton) {
-            editButton.onclick = () => {
-                allInputs.forEach(inp => inp.disabled = false);
-                const saveButton = document.getElementById('save-section');
-                if (saveButton) saveButton.classList.remove('hidden');
-                editButton.classList.add('hidden');
-            };
-        }
-
-        const saveButton = document.getElementById('save-section');
-        if (saveButton) {
-            saveButton.onclick = () => saveSection(section);
-        }
-    } catch (err) {
-        console.error(`Load section ${section} error:`, err);
-        showPopup('Error: ' + err.message);
-    }
-}
-
 async function clearAllSectionData() {
     const token = localStorage.getItem('access_token');
     if (!token) return;
@@ -2336,4 +1860,3 @@ async function clearAllSectionData() {
         console.warn('Failed to clear section data on server:', err);
     }
 }
-
