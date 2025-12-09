@@ -567,7 +567,7 @@ if (document.getElementById('section-list')) {
                         <select id="previous_auditor_type" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
                             <option value="MCXCCL">MCXCCL</option>
                             <option value="WSP">WSP</option>
-                            <option value="External">External</option>
+                            <option value="External">External</option> 
                         </select>
                     </div>
                     <div id="agency_name_container" class="mb-4" style="display: none;">

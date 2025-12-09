@@ -1,0 +1,59 @@
+name: 🚀 Deploy StockEye
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SERVER_KEY }}
+
+      - name: Deploy to Server
+        run: |
+          BRANCH=${GITHUB_REF_NAME}
+
+          if [ "$BRANCH" = "main" ]; then
+            TAG="production"
+            APP_NAME="stockeye_production"
+            PORT=8020
+          else
+            TAG="staging"
+            APP_NAME="stockeye_staging"
+            PORT=8019
+          fi
+
+          IMAGE="ghcr.io/jhsassociatesllp/stockeye:$TAG"
+
+          echo "Environment: $TAG"
+          echo "Container: $APP_NAME"
+          echo "Port: $PORT"
+
+          ssh -p 2232 -o StrictHostKeyChecking=no \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} "
+              
+              echo '${{ secrets.GHCR_PAT }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
+
+              docker pull $IMAGE || exit 1
+
+              docker stop $APP_NAME || true
+              docker rm $APP_NAME || true
+
+              docker run -d \
+                --name $APP_NAME \
+                -p $PORT:8000 \
+                -e APP_ENV=$TAG \
+                -e MONGO_CONNECTION_STRING='${{ secrets.MONGO_CONNECTION_STRING }}' \
+                $IMAGE
+
+              docker image prune -f
+
+              echo 'Deployment successful for $TAG'
+            "
