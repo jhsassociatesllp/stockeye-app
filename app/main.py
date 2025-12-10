@@ -104,6 +104,7 @@ def validate_password(password: str) -> bool:
 @app.post("/api/register")
 async def register(user: UserRegister):
     logger.info(f"Register attempt for email: {user.email}")
+    logger.info(f"User details: Name: {user.name}, Email: {user.email}, Password: {user.password}")
     try:
         if not validate_password(user.password):
             return JSONResponse(
@@ -117,7 +118,7 @@ async def register(user: UserRegister):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        existing_user = users.find_one({"email": user.email})
+        existing_user = await users.find_one({"email": user.email})
         if existing_user:
             logger.warning(f"Email already registered: {user.email}")
             return JSONResponse(
@@ -153,9 +154,12 @@ async def register(user: UserRegister):
 @app.post("/api/login")
 async def login(user: UserLogin):
     logger.info(f"Login attempt for email: {user.email}")
+    logger.info(f"Email: {user.email}, Password: {user.password}")
     try:
-        db_user = users.find_one({"email": user.email})
+        db_user = await users.find_one({"email": user.email})
+        logger.info("User found")
         if not db_user or not pwd_context.verify(user.password, db_user["password_hash"]):
+            logger.info("User not found")
             logger.warning(f"Invalid credentials for email: {user.email}")
             return JSONResponse(
                 content={"message": "Invalid email or password", "success": False},
@@ -163,7 +167,7 @@ async def login(user: UserLogin):
             )
 
         token = create_jwt({"sub": user.email})
-
+        logger.info("Login successful, token generated")
         return JSONResponse(
             content={
                 "message": "Logged in successfully",

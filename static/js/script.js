@@ -3,7 +3,7 @@
 // Automatically detect correct backend base URL
 let API_BASE_URL = "";
 let completionStatus = {};
-let submitButton = document.getElementById('submit-audit');
+// let submitButton = document.getElementById('submit-audit');
 // 🛑 Prevent accidental exit with custom modal
 let isExitConfirmed = false;
 // ✅ Skip exit confirmation for internal navigation (like login redirect)
@@ -327,6 +327,7 @@ if (document.getElementById('section-list')) {
             updateButtons();
             toggleSubmitButton();
 
+            const submitButton = document.getElementById('submit-audit');
             if (submitButton) {
                 submitButton.classList.remove('hidden');
                 submitButton.onclick = async () => {
