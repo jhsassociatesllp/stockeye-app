@@ -118,7 +118,7 @@ async def register(user: UserRegister):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        existing_user = await users.find_one({"email": user.email})
+        existing_user = users.find_one({"email": user.email})
         if existing_user:
             logger.warning(f"Email already registered: {user.email}")
             return JSONResponse(
@@ -156,7 +156,7 @@ async def login(user: UserLogin):
     logger.info(f"Login attempt for email: {user.email}")
     logger.info(f"Email: {user.email}, Password: {user.password}")
     try:
-        db_user = await users.find_one({"email": user.email})
+        db_user = users.find_one({"email": user.email})
         logger.info("User found")
         if not db_user or not pwd_context.verify(user.password, db_user["password_hash"]):
             logger.info("User not found")
