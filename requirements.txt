@@ -12,3 +12,4 @@ python-multipart
 openpyxl
 pillow
 python-docx
+pymongo
