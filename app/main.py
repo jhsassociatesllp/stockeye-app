@@ -47,6 +47,7 @@ from fastapi.responses import JSONResponse
 import os, io, base64, re
 from docx import Document
 from docx.shared import Pt, Inches
+import bcrypt
 
 
 # Set up logging
@@ -127,7 +128,19 @@ async def register(user: UserRegister):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        hashed_password = pwd_context.hash(user.password[:72])
+        # hashed_password = pwd_context.hash(user.password[:72])
+        # users.insert_one({
+        #     "name": user.name,
+        #     "email": user.email,
+        #     "password_hash": hashed_password,
+        #     "created_at": datetime.now(timezone.utc),
+        # })
+        
+        hashed_password = bcrypt.hashpw(
+            user.password.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+
         users.insert_one({
             "name": user.name,
             "email": user.email,
@@ -178,15 +191,15 @@ async def login(user: UserLogin):
         
         logger.info("Getting password and hash")
         password = user.password
-        password_hash = db_user.get("password_hash")
-        logger.info("Password Hash from DB: ", password_hash)
+        password_hash = db_user["password_hash"]
+        logger.info(f"Password Hash from DB: {password_hash}")
 
-        if not isinstance(password, str) or not isinstance(password_hash, str):
-            logger.error(
-                f"Invalid types | password={type(password)}, hash={type(password_hash)}"
-            )
+        if not bcrypt.checkpw(
+            password.encode("utf-8"),
+            password_hash.encode("utf-8")
+        ):
             return JSONResponse(
-                content={"message": "Invalid email or password", "success": False},
+                {"message": "Invalid email or password", "success": False},
                 status_code=401
             )
 
