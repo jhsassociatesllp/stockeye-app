@@ -188,7 +188,6 @@ async def login(user: UserLogin):
         #         status_code=status.HTTP_401_UNAUTHORIZED
         #     )
         
-        
         logger.info("Getting password and hash")
         password = user.password
         password_hash = db_user["password_hash"]
