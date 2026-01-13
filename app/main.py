@@ -197,6 +197,7 @@ def login(user: UserLogin):
             password.encode("utf-8"),
             password_hash.encode("utf-8")
         ):
+            
             return JSONResponse(
                 {"message": "Invalid email or password", "success": False},
                 status_code=401
