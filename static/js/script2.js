@@ -3,7 +3,7 @@
 // Automatically detect correct backend base URL
 let API_BASE_URL = "";
 let completionStatus = {};
-let submitButton = document.getElementById('submit-audit');
+// let submitButton = document.getElementById('submit-audit');
 // 🛑 Prevent accidental exit with custom modal
 let isExitConfirmed = false;
 // ✅ Skip exit confirmation for internal navigation (like login redirect)
@@ -300,7 +300,7 @@ if (document.getElementById('section-list')) {
                 'observations_on_stacking', 'observations_on_warehouse_operations',
                 'observations_on_warehouse_record_keeping', 'observations_on_wh_infrastructure',
                 'observations_on_quality_operation', 'checklist_wrt_exchange_circular_mentha_oil',
-                'checklist_wrt_mcxCCL_circular_metal', 'checklist_wrt_mcxCCL_circular_cotton_bales',
+                'checklist_wrt_exchange_circular_metal', 'checklist_wrt_exchange_circular_cotton_bales',
                 'signature', 'photo'
             ];
 
@@ -327,6 +327,7 @@ if (document.getElementById('section-list')) {
             updateButtons();
             toggleSubmitButton();
 
+            const submitButton = document.getElementById('submit-audit');
             if (submitButton) {
                 submitButton.classList.remove('hidden');
                 submitButton.onclick = async () => {
@@ -567,7 +568,7 @@ if (document.getElementById('section-list')) {
                         <select id="previous_auditor_type" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" required>
                             <option value="MCXCCL">MCXCCL</option>
                             <option value="WSP">WSP</option>
-                            <option value="External">External</option>
+                            <option value="External">External</option> 
                         </select>
                     </div>
                     <div id="agency_name_container" class="mb-4" style="display: none;">
@@ -1038,7 +1039,7 @@ if (document.getElementById('section-list')) {
                         document.getElementById(`remarks${i}`).value = qd.remarks || '';
                     });
                 }
-            } else if (section === 'checklist_wrt_mcxCCL_circular_metal') {
+            } else if (section === 'checklist_wrt_exchange_circular_metal') {
                 const questions = [
                     "Whether the Certificate of Analysis (CoA) of the producer at the time of deposits with containing details like Brand name of the associated lots, Producer’s name, Batch No & certificate date been collected by warehouse?",
                     "Whether the packing list for deposited goods are available as per the latest circular or not with following details; - Contains net weight - Contains gross weight - Contains batch no - No. of units in bundles/lot.",
@@ -1078,7 +1079,7 @@ if (document.getElementById('section-list')) {
                         document.getElementById(`remarks${i}`).value = qd.remarks || '';
                     });
                 }
-            } else if (section === 'checklist_wrt_mcxCCL_circular_cotton_bales') {
+            } else if (section === 'checklist_wrt_exchange_circular_cotton_bales') {
                 const questions = [
                     "Whether bales have all the proper markings in the form of unique press running number (PRN) Whether every bale has a label giving details of variety weight, crop year when checked randomly? And any other details as may be required from time to time? Does each bale have a label / sticker giving the bale number in figures along with ginner details?",
                     "Whether warehouse has put in a deposit stamp / sticker, containing the date of deposit of the goods on each bale deposited?",
@@ -1531,7 +1532,7 @@ if (document.getElementById('section-list')) {
                 }
             }
         }
-        else if (section === 'observations_on_stacking' || section === 'observations_on_warehouse_operations' || section === 'observations_on_warehouse_record_keeping' || section === 'observations_on_wh_infrastructure' || section === 'observations_on_quality_operation' || section === 'checklist_wrt_exchange_circular_mentha_oil' || section === 'checklist_wrt_mcxCCL_circular_metal' || section === 'checklist_wrt_mcxCCL_circular_cotton_bales') {
+        else if (section === 'observations_on_stacking' || section === 'observations_on_warehouse_operations' || section === 'observations_on_warehouse_record_keeping' || section === 'observations_on_wh_infrastructure' || section === 'observations_on_quality_operation' || section === 'checklist_wrt_exchange_circular_mentha_oil' || section === 'checklist_wrt_exchange_circular_metal' || section === 'checklist_wrt_exchange_circular_cotton_bales') {
             data.questions = [];
             const remarksInputs = document.querySelectorAll('[id^="remarks"]');
             let allAnswered = true;

@@ -296,7 +296,7 @@ if (document.getElementById('section-list')) {
 
             // <-- UPDATED: include 'stock_reconciliation' right after general_report -->
             sections = [
-                'general_report', 'stock_reconciliation',
+                'general_report', 'stock_reconciliation', 'stock_commodity',
                 'observations_on_stacking', 'observations_on_warehouse_operations',
                 'observations_on_warehouse_record_keeping', 'observations_on_wh_infrastructure',
                 'observations_on_quality_operation', 'checklist_wrt_exchange_circular_mentha_oil',
@@ -772,6 +772,137 @@ if (document.getElementById('section-list')) {
                 addBtn.onclick = () => {
                     createCommodityCard();
                     const last = commodityList.lastElementChild;
+                    if (last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                };
+            }
+
+            else if (section === 'stock_commodity') {
+                form.innerHTML = `
+                    <div class="mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800">Stock Commodity</h3>
+                    </div>
+                    <div id="commodity-item-list" class="space-y-3"></div>
+                    <div class="mt-3 flex justify-between">
+                        <button type="button" id="add-commodity-item" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600">Add Item</button>
+                        <div class="text-sm text-gray-500 self-center">(*) Mandatory fields</div>
+                    </div>
+                    <div class="mt-4">
+                        <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
+                    </div>
+                `;
+
+                const commodityItemList = document.getElementById('commodity-item-list');
+                const addBtn = document.getElementById('add-commodity-item');
+
+                function createCommodityItemCard(dataObj = null) {
+                    const card = document.createElement('div');
+                    card.className = 'border rounded-lg p-3 bg-white shadow-sm';
+
+                    commodityItemList.appendChild(card);
+
+                    const idx = Array.from(commodityItemList.children).indexOf(card) + 1;
+                    card.id = `commodity-item-card-${idx}`;
+
+                    card.innerHTML = `
+                        <div class="flex justify-between items-center cursor-pointer" id="commodity-item-header-${idx}">
+                            <div>
+                                <h4 class="text-md font-medium text-gray-800" id="commodity-item-title-${idx}">Item ${idx}</h4>
+                                <div class="text-xs text-gray-500" id="commodity-item-subtitle-${idx}">${dataObj ? (dataObj.item_name || '') : ''}</div>
+                            </div>
+                            <button type="button" class="text-red-500 hover:text-red-700" id="delete-item-${idx}" title="Delete Item">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                        <div class="mt-3" id="commodity-item-body-${idx}">
+                            <div class="mb-2">
+                                <label class="block text-gray-700 mb-1">Item Code <span class="mandatory-star">*</span></label>
+                                <input type="text" id="item-code-${idx}" class="w-full p-2 border rounded-lg" placeholder="Enter Item Code">
+                            </div>
+                            <div class="mb-2">
+                                <label class="block text-gray-700 mb-1">Item Name <span class="mandatory-star">*</span></label>
+                                <input type="text" id="item-name-${idx}" class="w-full p-2 border rounded-lg" placeholder="Enter Item Name">
+                            </div>
+                            <div class="mb-2">
+                                <label class="block text-gray-700 mb-1">Book Qty <span class="mandatory-star">*</span></label>
+                                <input type="number" id="book-qty-${idx}" min="0" step="any" class="w-full p-2 border rounded-lg">
+                            </div>
+                            <div class="mb-2">
+                                <label class="block text-gray-700 mb-1">Physical Qty <span class="mandatory-star">*</span></label>
+                                <input type="number" id="physical-qty-${idx}" min="0" step="any" class="w-full p-2 border rounded-lg">
+                            </div>
+                            <div class="mb-2">
+                                <label class="block text-gray-700 mb-1">Difference (Book - Physical)</label>
+                                <input type="text" id="item-difference-${idx}" readonly class="w-full p-2 border rounded-lg bg-gray-100">
+                            </div>
+                            <div class="mb-2">
+                                <label class="block text-gray-700 mb-1">Remarks</label>
+                                <input type="text" id="item-remarks-${idx}" class="w-full p-2 border rounded-lg" placeholder="Remarks (optional)">
+                            </div>
+                        </div>
+                    `;
+
+                    if (dataObj) {
+                        document.getElementById(`item-code-${idx}`).value = dataObj.item_code || '';
+                        document.getElementById(`item-name-${idx}`).value = dataObj.item_name || '';
+                        document.getElementById(`book-qty-${idx}`).value = dataObj.book_qty || '';
+                        document.getElementById(`physical-qty-${idx}`).value = dataObj.physical_qty || '';
+                        document.getElementById(`item-difference-${idx}`).value = dataObj.difference || '';
+                        document.getElementById(`item-remarks-${idx}`).value = dataObj.remarks || '';
+                        document.getElementById(`commodity-item-subtitle-${idx}`).textContent = dataObj.item_name || '';
+                    }
+
+                    function recompute() {
+                        const itemCode = document.getElementById(`item-code-${idx}`).value.trim();
+                        const itemName = document.getElementById(`item-name-${idx}`).value.trim();
+                        const bookQty = parseFloat(document.getElementById(`book-qty-${idx}`).value || 0);
+                        const physicalQty = parseFloat(document.getElementById(`physical-qty-${idx}`).value || 0);
+                        const diff = bookQty - physicalQty;
+                        document.getElementById(`item-difference-${idx}`).value = isNaN(diff) ? '' : diff;
+
+                        document.getElementById(`commodity-item-title-${idx}`).textContent =
+                            itemName ? `Item ${idx} - ${itemName}` : `Item ${idx}`;
+                        document.getElementById(`commodity-item-subtitle-${idx}`).textContent = itemCode || '';
+                    }
+
+                    ['item-code-', 'item-name-', 'book-qty-', 'physical-qty-'].forEach(prefix => {
+                        const el = document.getElementById(prefix + idx);
+                        if (el) el.addEventListener('input', recompute);
+                        if (el) el.addEventListener('change', recompute);
+                    });
+
+                    document.getElementById(`commodity-item-header-${idx}`).addEventListener('click', (ev) => {
+                        if (ev.target.closest(`#delete-item-${idx}`)) return;
+                        const body = document.getElementById(`commodity-item-body-${idx}`);
+                        if (body) body.classList.toggle('hidden');
+                    });
+
+                    document.getElementById(`delete-item-${idx}`).addEventListener('click', () => {
+                        card.remove();
+                        reindexCommodityItems();
+                    });
+                }
+
+                function reindexCommodityItems() {
+                    const cards = Array.from(commodityItemList.children);
+                    cards.forEach((card, newIndex) => {
+                        const idx = newIndex + 1;
+                        const title = card.querySelector('h4[id^="commodity-item-title-"]');
+                        const nameInput = card.querySelector('input[id^="item-name-"]');
+                        const nameValue = nameInput ? nameInput.value.trim() : '';
+                        title.textContent = nameValue ? `Item ${idx} - ${nameValue}` : `Item ${idx}`;
+                    });
+                }
+
+                const initialItems = Array.isArray(sectionData.items) ? sectionData.items : [];
+                if (initialItems.length > 0) {
+                    initialItems.forEach(obj => createCommodityItemCard(obj));
+                } else {
+                    createCommodityItemCard();
+                }
+
+                addBtn.onclick = () => {
+                    createCommodityItemCard();
+                    const last = commodityItemList.lastElementChild;
                     if (last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 };
             }
@@ -1532,6 +1663,63 @@ if (document.getElementById('section-list')) {
                 }
             }
         }
+
+        else if (section === 'stock_commodity') {
+            data.items = [];
+            const commodityItemList = document.getElementById('commodity-item-list');
+            if (!commodityItemList) {
+                validationErrors.push("No item rows found.");
+            } else {
+                const cards = Array.from(commodityItemList.children);
+                if (cards.length === 0) {
+                    validationErrors.push("Please add at least one item row before saving.");
+                } else {
+                    cards.forEach((card, idx) => {
+                        const idSuffix = card.id.split('commodity-item-card-')[1];
+                        const suf = idSuffix || (idx + 1);
+                        
+                        const itemCodeEl = document.getElementById(`item-code-${suf}`);
+                        const itemNameEl = document.getElementById(`item-name-${suf}`);
+                        const bookQtyEl = document.getElementById(`book-qty-${suf}`);
+                        const physicalQtyEl = document.getElementById(`physical-qty-${suf}`);
+                        const diffEl = document.getElementById(`item-difference-${suf}`);
+                        const remEl = document.getElementById(`item-remarks-${suf}`);
+
+                        const itemCode = itemCodeEl ? itemCodeEl.value.trim() : '';
+                        const itemName = itemNameEl ? itemNameEl.value.trim() : '';
+                        const bookQtyRaw = bookQtyEl ? bookQtyEl.value.trim() : '';
+                        const physicalQtyRaw = physicalQtyEl ? physicalQtyEl.value.trim() : '';
+                        const bookQty = bookQtyRaw === '' ? null : parseFloat(bookQtyRaw);
+                        const physicalQty = physicalQtyRaw === '' ? null : parseFloat(physicalQtyRaw);
+
+                        if (!itemCode) {
+                            validationErrors.push(`Item Code is required for row ${idx + 1}.`);
+                        }
+                        if (!itemName) {
+                            validationErrors.push(`Item Name is required for row ${idx + 1}.`);
+                        }
+                        if (bookQtyRaw === '' || isNaN(bookQty)) {
+                            validationErrors.push(`Book Qty is required and must be numeric for row ${idx + 1}.`);
+                        }
+                        if (physicalQtyRaw === '' || isNaN(physicalQty)) {
+                            validationErrors.push(`Physical Qty is required and must be numeric for row ${idx + 1}.`);
+                        }
+
+                        const difference = (bookQty !== null && physicalQty !== null) ? (bookQty - physicalQty) : null;
+
+                        data.items.push({
+                            item_code: itemCode,
+                            item_name: itemName,
+                            book_qty: bookQty,
+                            physical_qty: physicalQty,
+                            difference,
+                            remarks: (remEl && remEl.value) ? remEl.value.trim() : ''
+                        });
+                    });
+                }
+            }
+        }
+
         else if (section === 'observations_on_stacking' || section === 'observations_on_warehouse_operations' || section === 'observations_on_warehouse_record_keeping' || section === 'observations_on_wh_infrastructure' || section === 'observations_on_quality_operation' || section === 'checklist_wrt_exchange_circular_mentha_oil' || section === 'checklist_wrt_exchange_circular_metal' || section === 'checklist_wrt_exchange_circular_cotton_bales') {
             data.questions = [];
             const remarksInputs = document.querySelectorAll('[id^="remarks"]');

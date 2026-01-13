@@ -118,7 +118,8 @@ async def register(user: UserRegister):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        existing_user = users.find_one({"email": user.email})
+        existing_user = await users.find_one({"email": user.email})
+        print(existing_user)
         if existing_user:
             logger.warning(f"Email already registered: {user.email}")
             return JSONResponse(
@@ -156,7 +157,7 @@ async def login(user: UserLogin):
     logger.info(f"Login attempt for email: {user.email}")
     logger.info(f"Email: {user.email}, Password: {user.password}")
     try:
-        db_user = users.find_one({"email": user.email})
+        db_user = await users.find_one({"email": user.email})
         logger.info("User found")
         if not db_user or not pwd_context.verify(user.password, db_user["password_hash"]):
             logger.info("User not found")
@@ -226,14 +227,15 @@ async def get_sections(emp_id: str = Depends(get_current_user)):
         completion_status = {
             "general_report": audit["completion_status"].get("general_report", False) if audit and "completion_status" in audit else False,
             "stock_reconciliation": audit["completion_status"].get("stock_reconciliation", False) if audit and "completion_status" in audit else False,
+            "stock_commodity": audit["completion_status"].get("stock_commodity", False) if audit and "completion_status" in audit else False,
             "observations_on_stacking": audit["completion_status"].get("observations_on_stacking", False) if audit and "completion_status" in audit else False,
             "observations_on_warehouse_operations": audit["completion_status"].get("observations_on_warehouse_operations", False) if audit and "completion_status" in audit else False,
             "observations_on_warehouse_record_keeping": audit["completion_status"].get("observations_on_warehouse_record_keeping", False) if audit and "completion_status" in audit else False,
             "observations_on_wh_infrastructure": audit["completion_status"].get("observations_on_wh_infrastructure", False) if audit and "completion_status" in audit else False,
             "observations_on_quality_operation": audit["completion_status"].get("observations_on_quality_operation", False) if audit and "completion_status" in audit else False,
             "checklist_wrt_exchange_circular_mentha_oil": audit["completion_status"].get("checklist_wrt_exchange_circular_mentha_oil", False) if audit and "completion_status" in audit else False,
-            "checklist_wrt_mcxCCL_circular_metal": audit["completion_status"].get("checklist_wrt_mcxCCL_circular_metal", False) if audit and "completion_status" in audit else False,
-            "checklist_wrt_mcxCCL_circular_cotton_bales": audit["completion_status"].get("checklist_wrt_mcxCCL_circular_cotton_bales", False) if audit and "completion_status" in audit else False
+            "checklist_wrt_exchange_circular_metal": audit["completion_status"].get("checklist_wrt_exchange_circular_metal", False) if audit and "completion_status" in audit else False,
+            "checklist_wrt_exchange_circular_cotton_bales": audit["completion_status"].get("checklist_wrt_exchange_circular_cotton_bales", False) if audit and "completion_status" in audit else False,
         }
         response = base_response.copy()
         response.update({
@@ -473,11 +475,19 @@ async def export_word(emp_id: str = Depends(get_current_user)):
             )
 
         completion = audit_data.get("completion_status", {})
+        # expected_sections = [
+        #     "general_report", "observations_on_stacking", "observations_on_warehouse_operations",
+        #     "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
+        #     "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
+        #     "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
+        #     "signature", "photo"
+        # ]
+        
         expected_sections = [
-            "general_report", "observations_on_stacking", "observations_on_warehouse_operations",
+            "general_report", 'stock_reconciliation', 'stock_commodity', "observations_on_stacking", "observations_on_warehouse_operations",
             "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
             "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
-            "checklist_wrt_mcxCCL_circular_metal", "checklist_wrt_mcxCCL_circular_cotton_bales",
+            "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
             "signature", "photo"
         ]
         all_completed = all(completion.get(s, False) for s in expected_sections)
@@ -526,8 +536,8 @@ async def export_word(emp_id: str = Depends(get_current_user)):
             ("observations_on_wh_infrastructure", "Observations on WH Infrastructure"),
             ("observations_on_quality_operation", "Observations on Quality Operation"),
             ("checklist_wrt_exchange_circular_mentha_oil", "Checklist: Mentha Oil"),
-            ("checklist_wrt_mcxCCL_circular_metal", "Checklist: Metals"),
-            ("checklist_wrt_mcxCCL_circular_cotton_bales", "Checklist: Cotton Bales"),
+            ("checklist_wrt_exchange_circular_metal", "Checklist: Metals"),
+            ("checklist_wrt_exchange_circular_cotton_bales", "Checklist: Cotton Bales"),
         ]
 
         for key, title in question_sections:
@@ -655,6 +665,27 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
     else:
         ws.append(["No stock data.", "", "", "", "", ""])
     adjust(ws, [20, 20, 20, 20, 20, 30])
+    
+    # ========== ADD THIS: Stock Commodity Sheet ==========
+    ws = wb.create_sheet("Stock Commodity")
+    ws.append([
+        "Item Code", "Item Name", "Book Qty", "Physical Qty", "Difference", "Remarks"
+    ])
+    stock_commodity = sections.get("stock_commodity", {}).get("items", [])
+    if stock_commodity:
+        for item in stock_commodity:
+            ws.append([
+                item.get("item_code", ""),
+                item.get("item_name", ""),
+                item.get("book_qty", ""),
+                item.get("physical_qty", ""),
+                item.get("difference", ""),
+                item.get("remarks", "")
+            ])
+    else:
+        ws.append(["No stock commodity data.", "", "", "", "", ""])
+    adjust(ws, [20, 25, 15, 15, 15, 30])
+    # ========== END OF STOCK COMMODITY ADDITION ==========
 
     # ---------- Question-based sections ----------
     q_sections = [
@@ -664,8 +695,8 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
         ("observations_on_wh_infrastructure", "Observations on WH Infrastructure"),
         ("observations_on_quality_operation", "Observations on Quality Operation"),
         ("checklist_wrt_exchange_circular_mentha_oil", "Checklist Mentha Oil"),
-        ("checklist_wrt_mcxCCL_circular_metal", "Checklist Metals"),
-        ("checklist_wrt_mcxCCL_circular_cotton_bales", "Checklist Cotton Bales"),
+        ("checklist_wrt_exchange_circular_metal", "Checklist Metals"),
+        ("checklist_wrt_exchange_circular_cotton_bales", "Checklist Cotton Bales"),
     ]
     for key, title in q_sections:
         ws = wb.create_sheet(title)
@@ -771,13 +802,13 @@ async def send_email(
         # (optional) you may still enforce completion here – keep the same check as export
         completion = audit_data.get("completion_status", {})
         expected = [
-            "general_report", "stock_reconciliation",
+            "general_report", "stock_reconciliation", "stock_commodity",
             "observations_on_stacking", "observations_on_warehouse_operations",
             "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
             "observations_on_quality_operation",
             "checklist_wrt_exchange_circular_mentha_oil",
-            "checklist_wrt_mcxCCL_circular_metal",
-            "checklist_wrt_mcxCCL_circular_cotton_bales",
+            "checklist_wrt_exchange_circular_metal",
+            "checklist_wrt_exchange_circular_cotton_bales",
             "signature", "photo"
         ]
         if not all(completion.get(s, False) for s in expected):
@@ -872,13 +903,13 @@ async def export_excel(emp_id: str = Depends(get_current_user)):
         # Completion check (same as before)
         completion = audit_data.get("completion_status", {})
         expected = [
-            "general_report", "stock_reconciliation",
+            "general_report", "stock_reconciliation", "stock_commodity",
             "observations_on_stacking", "observations_on_warehouse_operations",
             "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
             "observations_on_quality_operation",
             "checklist_wrt_exchange_circular_mentha_oil",
-            "checklist_wrt_mcxCCL_circular_metal",
-            "checklist_wrt_mcxCCL_circular_cotton_bales",
+            "checklist_wrt_exchange_circular_metal",
+            "checklist_wrt_exchange_circular_cotton_bales",
             "signature", "photo"
         ]
         if not all(completion.get(s, False) for s in expected):
