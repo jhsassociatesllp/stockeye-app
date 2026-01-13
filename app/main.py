@@ -8,7 +8,7 @@ from fastapi import FastAPI, Depends, HTTPException, Request, Response, status, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
-from passlib.context import CryptContext
+# from passlib.context import CryptContext
 import logging
 import requests
 from app.auth import *
@@ -77,7 +77,7 @@ app.add_middleware(
 )
 
 # Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Base response format
 base_response = {
@@ -165,67 +165,109 @@ async def register(user: UserRegister):
         )
 
 
+# @app.post("/api/login")
+# def login(user: UserLogin):
+#     logger.info(f"Login attempt for email: {user.email}")
+#     logger.info(f"Email: {user.email}, Password: {user.password}")
+#     try:
+#         db_user = users.find_one({"email": user.email})
+        
+#         print(f"type(users): {type(users)}")
+#         print(f"type(db_user): {type(db_user)}")
+#         print(f"repr(db_user): {repr(db_user)}")
+#         logger.info(f"type(users): {type(users)}")
+#         logger.info(f"type(db_user): {type(db_user)}")
+#         logger.info(f"repr(db_user): {repr(db_user)}")
+#         logger.info("User found")
+#         print("Db User: ", db_user)
+#         # if not db_user or not pwd_context.verify(user.password, db_user["password_hash"]):
+#         #     logger.info("User not found")
+#         #     logger.warning(f"Invalid credentials for email: {user.email}")
+#         #     return JSONResponse(
+#         #         content={"message": "Invalid email or password", "success": False},
+#         #         status_code=status.HTTP_401_UNAUTHORIZED
+#         #     )
+        
+#         logger.info("Getting password and hash")
+#         password = user.password
+#         password_hash = db_user["password_hash"]
+#         logger.info(f"Password Hash from DB: {password_hash}")
+
+#         if not bcrypt.checkpw(
+#             password.encode("utf-8"),
+#             password_hash.encode("utf-8")
+#         ):
+            
+#             return JSONResponse(
+#                 {"message": "Invalid email or password", "success": False},
+#                 status_code=401
+#             )
+
+#         # if not pwd_context.verify(password, password_hash):
+#         #     return JSONResponse(
+#         #         content={"message": "Invalid email or password", "success": False},
+#         #         status_code=401
+#         #     )
+
+#         token = create_jwt({"sub": user.email})
+#         logger.info("Login successful, token generated")
+#         return JSONResponse(
+#             content={
+#                 "message": "Logged in successfully",
+#                 "success": True,
+#                 "data": {"access_token": token}
+#             },
+#             status_code=status.HTTP_200_OK
+#         )
+
+#     except Exception as e:
+#         logger.error(f"Error in login: {str(e)}")
+#         return JSONResponse(
+#             content={"message": f"Server error: {str(e)}", "success": False},
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+#         )
+
 @app.post("/api/login")
 def login(user: UserLogin):
     logger.info(f"Login attempt for email: {user.email}")
-    logger.info(f"Email: {user.email}, Password: {user.password}")
-    try:
-        db_user = users.find_one({"email": user.email})
-        
-        print(f"type(users): {type(users)}")
-        print(f"type(db_user): {type(db_user)}")
-        print(f"repr(db_user): {repr(db_user)}")
-        logger.info(f"type(users): {type(users)}")
-        logger.info(f"type(db_user): {type(db_user)}")
-        logger.info(f"repr(db_user): {repr(db_user)}")
-        logger.info("User found")
-        print("Db User: ", db_user)
-        # if not db_user or not pwd_context.verify(user.password, db_user["password_hash"]):
-        #     logger.info("User not found")
-        #     logger.warning(f"Invalid credentials for email: {user.email}")
-        #     return JSONResponse(
-        #         content={"message": "Invalid email or password", "success": False},
-        #         status_code=status.HTTP_401_UNAUTHORIZED
-        #     )
-        
-        logger.info("Getting password and hash")
-        password = user.password
-        password_hash = db_user["password_hash"]
-        logger.info(f"Password Hash from DB: {password_hash}")
 
-        if not bcrypt.checkpw(
-            password.encode("utf-8"),
-            password_hash.encode("utf-8")
-        ):
-            
-            return JSONResponse(
-                {"message": "Invalid email or password", "success": False},
-                status_code=401
-            )
-
-        # if not pwd_context.verify(password, password_hash):
-        #     return JSONResponse(
-        #         content={"message": "Invalid email or password", "success": False},
-        #         status_code=401
-        #     )
-
-        token = create_jwt({"sub": user.email})
-        logger.info("Login successful, token generated")
+    db_user = users.find_one({"email": user.email})
+    if not db_user:
         return JSONResponse(
-            content={
-                "message": "Logged in successfully",
-                "success": True,
-                "data": {"access_token": token}
-            },
-            status_code=status.HTTP_200_OK
+            {"message": "Invalid email or password", "success": False},
+            status_code=401
         )
 
-    except Exception as e:
-        logger.error(f"Error in login: {str(e)}")
+    password = user.password
+    password_hash = db_user.get("password_hash")
+
+    if not isinstance(password, str) or not isinstance(password_hash, str):
+        logger.error("Invalid password types")
         return JSONResponse(
-            content={"message": f"Server error: {str(e)}", "success": False},
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            {"message": "Invalid email or password", "success": False},
+            status_code=401
         )
+
+    if not bcrypt.checkpw(
+        password.encode("utf-8"),
+        password_hash.encode("utf-8")
+    ):
+        return JSONResponse(
+            {"message": "Invalid email or password", "success": False},
+            status_code=401
+        )
+
+    token = create_jwt({"sub": user.email})
+
+    return JSONResponse(
+        {
+            "message": "Logged in successfully",
+            "success": True,
+            "data": {"access_token": token}
+        },
+        status_code=200
+    )
+
 
 
 @app.get("/api/me")
