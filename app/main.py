@@ -159,9 +159,12 @@ async def login(user: UserLogin):
     try:
         db_user = await users.find_one({"email": user.email})
         
-        logger.error(f"type(users): {type(users)}")
-        logger.error(f"type(db_user): {type(db_user)}")
-        logger.error(f"repr(db_user): {repr(db_user)}")
+        print(f"type(users): {type(users)}")
+        print(f"type(db_user): {type(db_user)}")
+        print(f"repr(db_user): {repr(db_user)}")
+        logger.info(f"type(users): {type(users)}")
+        logger.info(f"type(db_user): {type(db_user)}")
+        logger.info(f"repr(db_user): {repr(db_user)}")
         logger.info("User found")
         if not db_user or not pwd_context.verify(user.password, db_user["password_hash"]):
             logger.info("User not found")
