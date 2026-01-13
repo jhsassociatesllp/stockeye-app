@@ -166,13 +166,33 @@ async def login(user: UserLogin):
         logger.info(f"type(db_user): {type(db_user)}")
         logger.info(f"repr(db_user): {repr(db_user)}")
         logger.info("User found")
-        if not db_user or not pwd_context.verify(user.password, db_user["password_hash"]):
-            logger.info("User not found")
-            logger.warning(f"Invalid credentials for email: {user.email}")
+        print(db_user)
+        # if not db_user or not pwd_context.verify(user.password, db_user["password_hash"]):
+        #     logger.info("User not found")
+        #     logger.warning(f"Invalid credentials for email: {user.email}")
+        #     return JSONResponse(
+        #         content={"message": "Invalid email or password", "success": False},
+        #         status_code=status.HTTP_401_UNAUTHORIZED
+        #     )
+        
+        password = user.password
+        password_hash = db_user.get("password_hash")
+
+        if not isinstance(password, str) or not isinstance(password_hash, str):
+            logger.error(
+                f"Invalid types | password={type(password)}, hash={type(password_hash)}"
+            )
             return JSONResponse(
                 content={"message": "Invalid email or password", "success": False},
-                status_code=status.HTTP_401_UNAUTHORIZED
+                status_code=401
             )
+
+        if not pwd_context.verify(password, password_hash):
+            return JSONResponse(
+                content={"message": "Invalid email or password", "success": False},
+                status_code=401
+            )
+
 
         token = create_jwt({"sub": user.email})
         logger.info("Login successful, token generated")
