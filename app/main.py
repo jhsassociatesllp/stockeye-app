@@ -118,7 +118,7 @@ async def register(user: UserRegister):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        existing_user = await users.find_one({"email": user.email})
+        existing_user = users.find_one({"email": user.email})
         print(existing_user)
         if existing_user:
             logger.warning(f"Email already registered: {user.email}")
@@ -128,7 +128,7 @@ async def register(user: UserRegister):
             )
 
         hashed_password = pwd_context.hash(user.password[:72])
-        await users.insert_one({
+        users.insert_one({
             "name": user.name,
             "email": user.email,
             "password_hash": hashed_password,
@@ -157,7 +157,7 @@ async def login(user: UserLogin):
     logger.info(f"Login attempt for email: {user.email}")
     logger.info(f"Email: {user.email}, Password: {user.password}")
     try:
-        db_user = await users.find_one({"email": user.email})
+        db_user = users.find_one({"email": user.email})
         
         print(f"type(users): {type(users)}")
         print(f"type(db_user): {type(db_user)}")
@@ -196,7 +196,7 @@ async def login(user: UserLogin):
 async def get_me(emp_id: str = Depends(get_current_user)):
     logger.info(f"Fetching user info for emp_id: {emp_id}")
     try:
-        user = await users.find_one({"email": emp_id})
+        user = users.find_one({"email": emp_id})
         if not user:
             response.update({
                 "message": "User not found",
@@ -227,7 +227,7 @@ async def get_sections(emp_id: str = Depends(get_current_user)):
     logger.info(f"Fetching sections for emp_id: {emp_id}")
     try:
         today = datetime.now(timezone.utc).date().isoformat()
-        audit = await temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
         # if not audit:
         #     audit = await audit_data_collection.find_one({"user_id": emp_id, "date": today})
             
@@ -266,7 +266,7 @@ async def get_section(section_name: str, emp_id: str = Depends(get_current_user)
     logger.info(f"Fetching section {section_name} for emp_id: {emp_id}")
     try:
         today = datetime.now(timezone.utc).date().isoformat()
-        audit = await temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
         section_data = audit["sections"][section_name] if audit and section_name in audit["sections"] else {}
         response = base_response.copy()
         response.update({
@@ -301,7 +301,7 @@ async def save_section(request: Request, emp_id: str = Depends(get_current_user)
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
-        audit = await temp_audit_data_collection.find_one({"user_id": emp_id, "date": date})
+        audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": date})
         if not audit:
             audit = {
                 "user_id": emp_id,
@@ -316,7 +316,7 @@ async def save_section(request: Request, emp_id: str = Depends(get_current_user)
         audit["completion_status"][section] = True
 
         if audit.get("_id"):
-            await temp_audit_data_collection.update_one(
+            temp_audit_data_collection.update_one(
                 {"_id": audit["_id"]},
                 {"$set": {
                     "sections": audit["sections"],
@@ -324,7 +324,7 @@ async def save_section(request: Request, emp_id: str = Depends(get_current_user)
                 }}
             )
         else:
-            await temp_audit_data_collection.insert_one(audit)
+            temp_audit_data_collection.insert_one(audit)
 
         response = base_response.copy()
         response.update({
@@ -349,7 +349,7 @@ async def submit_audit(emp_id: str = Depends(get_current_user)):
     logger.info(f"Submitting audit for emp_id: {emp_id}")
     try:
         today = datetime.now(timezone.utc).date().isoformat()
-        temp_audit = await temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        temp_audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
         if not temp_audit:
             response = base_response.copy()
             response.update({
@@ -367,10 +367,9 @@ async def submit_audit(emp_id: str = Depends(get_current_user)):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=response)
 
         # Copy to main collection
-        result = await audit_data_collection.insert_one(temp_audit)
-
+        result = audit_data_collection.insert_one(temp_audit)
         # Delete from temp
-        await temp_audit_data_collection.delete_one({"_id": temp_audit["_id"]})
+        temp_audit_data_collection.delete_one({"_id": temp_audit["_id"]})
 
         response = base_response.copy()
         response.update({
@@ -471,10 +470,10 @@ async def export_word(emp_id: str = Depends(get_current_user)):
     logger.info(f"Export Word requested by: {emp_id}")
     try:
         today = datetime.now(timezone.utc).date().isoformat()
-        audit_data = await temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
 
         if not audit_data:
-            # audit_data = await temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+            # audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
             # if not audit_data:
             return JSONResponse(
                 content={"message": "No audit data found for today to export", "success": False},
@@ -797,7 +796,7 @@ async def send_email(
         pdf_name = attachment.filename
 
         # ---- 2. Fetch audit data & generate Excel ----
-        audit_data = await audit_data_collection.find_one(
+        audit_data = audit_data_collection.find_one(
             {"user_id": emp_id, "date": today}
         )
         if not audit_data:
@@ -898,7 +897,7 @@ async def export_excel(emp_id: str = Depends(get_current_user)):
         today = datetime.now(timezone.utc).date().isoformat()
         logger.info(f"Export-Excel request by {emp_id}")
 
-        audit_data = await temp_audit_data_collection.find_one(
+        audit_data = temp_audit_data_collection.find_one(
             {"user_id": emp_id, "date": today}
         )
         if not audit_data:
