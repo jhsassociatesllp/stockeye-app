@@ -166,7 +166,7 @@ async def login(user: UserLogin):
         logger.info(f"type(db_user): {type(db_user)}")
         logger.info(f"repr(db_user): {repr(db_user)}")
         logger.info("User found")
-        print(db_user)
+        print("Db User: ", db_user)
         # if not db_user or not pwd_context.verify(user.password, db_user["password_hash"]):
         #     logger.info("User not found")
         #     logger.warning(f"Invalid credentials for email: {user.email}")
