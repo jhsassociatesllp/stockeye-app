@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_CONNECTION_STRING")
+print("MONGO_URI:", MONGO_URI)
 
 client = MongoClient(MONGO_URI)
 db = client["Audit_App"]

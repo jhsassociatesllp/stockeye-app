@@ -8,6 +8,7 @@ from datetime import datetime, timezone, timedelta
 load_dotenv()
 
 security = HTTPBearer()
+print("JWT_SECRET:", os.getenv("JWT_SECRET"))
 
 def create_jwt(data: dict) -> str:
     to_encode = data.copy()
