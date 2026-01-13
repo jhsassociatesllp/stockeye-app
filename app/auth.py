@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 
 load_dotenv()
 
+
 security = HTTPBearer()
 print("JWT_SECRET:", os.getenv("JWT_SECRET"))
 
