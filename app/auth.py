@@ -21,7 +21,7 @@ def create_jwt(data: dict) -> str:
 async def get_current_user(token: str = Depends(security)):
     try:
         print("Decoding JWT token", token)
-        payload = jwt.decode(token.credentials, os.getenv("JWT_SECRET"), algorithms=[os.getenv("JWT_ALGORITHM")])
+        payload = jwt.decode(token.credentials, os.getenv("JWT_SECRET"), algorithms=[os.getenv("JWT_ALGORITHM", "HS256")])
         emp_id: str = payload.get("sub")
         print(emp_id)
         if emp_id is None:

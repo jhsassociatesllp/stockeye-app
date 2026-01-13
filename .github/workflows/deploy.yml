@@ -51,6 +51,7 @@ jobs:
                 -p $PORT:8000 \
                 -e APP_ENV=$TAG \
                 -e JWT_SECRET='${{ secrets.JWT_SECRET }}' \
+                -e JWT_ALGORITHM='${{ secrets.JWT_ALGORITHM }}' \
                 -e MONGO_CONNECTION_STRING='${{ secrets.MONGO_CONNECTION_STRING }}' \
                 $IMAGE
 
