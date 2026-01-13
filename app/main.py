@@ -166,7 +166,7 @@ async def register(user: UserRegister):
 
 
 @app.post("/api/login")
-async def login(user: UserLogin):
+def login(user: UserLogin):
     logger.info(f"Login attempt for email: {user.email}")
     logger.info(f"Email: {user.email}, Password: {user.password}")
     try:
