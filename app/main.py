@@ -269,7 +269,6 @@ def login(user: UserLogin):
     )
 
 
-
 @app.get("/api/me")
 async def get_me(emp_id: str = Depends(get_current_user)):
     logger.info(f"Fetching user info for emp_id: {emp_id}")
