@@ -85,7 +85,6 @@ base_response = {
     "status_code": status.HTTP_400_BAD_REQUEST
 }
 
-
 def validate_password(password: str) -> bool:
     if len(password) < 8:
         return False
