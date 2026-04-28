@@ -7,7 +7,6 @@
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <style>
-        /* ... keep your existing styles ... */
         .password-container { position: relative; }
         .password-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; }
         .form-card { background: linear-gradient(135deg, #f7f9fc 0%, #e0e7ff 100%); }
@@ -25,6 +24,62 @@
         #video, #photo-canvas { width: 90vw; max-width: 400px; height: auto; border-radius: 12px; border: 1px solid #ccc; background-color: #000; object-fit: cover; }
         #photo-section button { width: 120px; }
 
+        /* ── Upload Wizard ── */
+        .upload-step { display: none; }
+        .upload-step.active { display: block; }
+
+        .sheet-checkbox-label {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 14px; border: 2px solid #e5e7eb;
+            border-radius: 10px; cursor: pointer;
+            transition: border-color .2s, background .2s;
+            font-weight: 500; color: #374151;
+        }
+        .sheet-checkbox-label:hover { border-color: #6366f1; background: #f5f3ff; }
+        .sheet-checkbox-label input:checked + span { color: #4f46e5; }
+        .sheet-checkbox-label:has(input:checked) {
+            border-color: #6366f1; background: #eef2ff;
+        }
+
+        .col-map-card {
+            background: #fff; border: 1px solid #e5e7eb;
+            border-radius: 12px; padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06);
+        }
+        .col-map-card h4 {
+            font-weight: 700; color: #1e1b4b;
+            margin-bottom: 12px; font-size: .95rem;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        .progress-bar-track {
+            width: 100%; height: 4px;
+            background: #e5e7eb; border-radius: 2px; margin-bottom: 20px;
+        }
+        .progress-bar-fill {
+            height: 100%; border-radius: 2px;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            transition: width .3s ease;
+        }
+
+        .step-indicator {
+            display: flex; gap: 6px; margin-bottom: 18px;
+            font-size: .75rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: .05em; color: #9ca3af;
+        }
+        .step-indicator .step { padding: 4px 10px; border-radius: 99px; background: #f3f4f6; }
+        .step-indicator .step.done { background: #c7d2fe; color: #4338ca; }
+        .step-indicator .step.active { background: #6366f1; color: #fff; }
+
+        .preview-tag {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: #eef2ff; color: #4338ca;
+            border-radius: 99px; padding: 3px 10px;
+            font-size: .78rem; font-weight: 600; margin: 3px;
+        }
+
+        #upload-progress-wrap { display: none; }
+        #upload-progress-wrap.show { display: block; }
     </style>
 </head>
 <body class="bg-gray-50 font-sans">
@@ -53,20 +108,26 @@
             </button>
         </div>
         <ul class="mt-4 space-y-2">
-            <li><button id="nav-checklist" class="w-full text-left px-6 py-2 hover:bg-gray-100">Checklist</button></li>
-            <!-- ✅ Add Stock Count for all users -->
+            <li>
+                <button id="nav-checklist" class="w-full text-left px-6 py-2 hover:bg-gray-100 rounded-lg transition">
+                    <i class="fas fa-clipboard-list mr-2 text-indigo-600"></i> Checklist
+                </button>
+            </li>
             <li id="nav-stock-count-item">
-                <button id="nav-stock-count" class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg transition">
-                    <i class="fas fa-box mr-2"></i> Stock Count
+                <button id="nav-stock-count" class="w-full text-left px-6 py-2 hover:bg-gray-100 rounded-lg transition">
+                    <i class="fas fa-box mr-2 text-blue-600"></i> Stock Count
                 </button>
             </li>
-            <!-- ✅ Add Upload Data for managers only (hidden by default) -->
             <li id="nav-upload-data-item" style="display: none;">
-                <button id="nav-upload-data" class="w-full text-left px-4 py-2 hover:bg-gray-100 rounded-lg transition">
-                    <i class="fas fa-upload mr-2"></i> Upload Data
+                <button id="nav-upload-data" class="w-full text-left px-6 py-2 hover:bg-gray-100 rounded-lg transition">
+                    <i class="fas fa-upload mr-2 text-purple-600"></i> Upload Data
                 </button>
             </li>
-            <li><button id="nav-send-email" class="w-full text-left px-6 py-2 hover:bg-gray-100">Send Email</button></li>
+            <li>
+                <button id="nav-send-email" class="w-full text-left px-6 py-2 hover:bg-gray-100 rounded-lg transition">
+                    <i class="fas fa-envelope mr-2 text-green-600"></i> Send Email
+                </button>
+            </li>
         </ul>
     </div>
 
@@ -91,23 +152,134 @@
         </form>
     </div>
 
-    <!-- ✅ Stock Count Section (after send-email-section) -->
-    <div id="stock-count-section" class="hidden">
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Stock Count</h2>
-            <p class="text-gray-600 mb-4">This section is under development.</p>
-            <!-- Add your stock count form/content here later -->
+    <!-- Stock Count Section -->
+    <div id="stock-count-section" class="hidden container mx-auto p-6 max-w-4xl">
+        <h2 class="text-2xl font-semibold text-gray-800 mb-4">Stock Count</h2>
+        <div class="mb-4">
+            <input type="text" id="stock-search" placeholder="Search by Item Code or Item Name..."
+                class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
         </div>
+        <!-- Sheet tabs will be injected here -->
+        <div id="stock-sheet-tabs" class="hidden mb-4 flex gap-2 flex-wrap"></div>
+        <div id="stock-items-list" class="space-y-2 mb-4"></div>
+        <button id="submit-stock-count" class="w-full bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 font-semibold">
+            Submit Stock Count
+        </button>
     </div>
 
-    <!-- ✅ Upload Data Section (for managers only) -->
-    <div id="upload-data-section" class="hidden">
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Upload Data</h2>
-            <p class="text-gray-600 mb-4">This section is under development.</p>
-            <!-- Add your upload data form/content here later -->
+    <!-- =====================================================================
+         UPLOAD DATA SECTION  –  3-step wizard
+         ===================================================================== -->
+    <div id="upload-data-section" class="hidden container mx-auto p-6 max-w-2xl">
+        <h2 class="text-2xl font-semibold text-gray-800 mb-2">Upload Item Master Data</h2>
+        <p class="text-gray-500 text-sm mb-5">Choose an Excel file → pick sheets → map columns → upload.</p>
+
+        <!-- Step indicator -->
+        <div class="step-indicator" id="wizard-step-indicator">
+            <div class="step active" data-step="1">1 · File</div>
+            <div class="step" data-step="2">2 · Sheets</div>
+            <div class="step" data-step="3">3 · Columns</div>
+        </div>
+
+        <!-- Progress bar -->
+        <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="wizard-progress" style="width:33%"></div>
+        </div>
+
+        <!-- ── Step 1 : File pick ── -->
+        <div class="upload-step active" id="wizard-step-1">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <label class="block text-gray-700 font-semibold mb-3">
+                    <i class="fas fa-file-excel mr-2 text-green-600"></i>
+                    Select Excel / CSV file <span class="mandatory-star">*</span>
+                </label>
+                <label id="file-drop-zone"
+                    class="flex flex-col items-center justify-center w-full h-36 border-2 border-dashed border-indigo-300 rounded-xl cursor-pointer bg-indigo-50 hover:bg-indigo-100 transition">
+                    <i class="fas fa-cloud-upload-alt text-3xl text-indigo-400 mb-2"></i>
+                    <span class="text-sm text-indigo-600 font-medium">Click to browse or drag &amp; drop</span>
+                    <span class="text-xs text-gray-400 mt-1">.xlsx, .xls, .xlsb or .csv</span>
+                    <input type="file" id="upload-file" accept=".xlsx,.xls,.xlsb,.csv" class="hidden">
+                </label>
+                <div id="file-selected-info" class="hidden mt-3 flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+                    <i class="fas fa-file-alt text-green-600"></i>
+                    <span id="file-selected-name" class="text-sm text-green-800 font-medium flex-1"></span>
+                    <button id="file-clear" class="text-red-400 hover:text-red-600 text-xs">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>
+
+                <div class="bg-blue-50 border border-blue-100 rounded-lg p-4 mt-4 text-sm text-gray-600">
+                    <p class="font-semibold text-blue-700 mb-1"><i class="fas fa-info-circle mr-1"></i> How it works</p>
+                    <ul class="list-disc ml-5 space-y-1">
+                        <li>Upload any Excel (.xlsx, .xls, .xlsb, single or multi-sheet) or CSV</li>
+                        <li>You'll choose which sheets to import</li>
+                        <li>The header row is auto-detected by scanning for a row containing <strong>"qty"</strong></li>
+                        <li>You'll map columns for Item Code, Item Name &amp; Quantity</li>
+                    </ul>
+                </div>
+
+                <button id="step1-next" disabled
+                    class="mt-5 w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition">
+                    Next: Select Sheets <i class="fas fa-arrow-right ml-1"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- ── Step 2 : Sheet selection ── -->
+        <div class="upload-step" id="wizard-step-2">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <p class="text-gray-600 text-sm mb-4">
+                    Select one or more sheets to import. Sheets without a detectable header row (containing "qty") will be marked.
+                </p>
+                <div id="sheet-list" class="space-y-2 max-h-72 overflow-y-auto pr-1"></div>
+
+                <div class="flex gap-3 mt-5">
+                    <button id="step2-back"
+                        class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 font-semibold transition">
+                        <i class="fas fa-arrow-left mr-1"></i> Back
+                    </button>
+                    <button id="step2-next" disabled
+                        class="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition">
+                        Next: Map Columns <i class="fas fa-arrow-right ml-1"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Step 3 : Column mapping ── -->
+        <div class="upload-step" id="wizard-step-3">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <p class="text-gray-500 text-sm mb-4">
+                    For each selected sheet, map the columns for <strong>Item Code</strong>, <strong>Item Name</strong>, and <strong>Quantity</strong>.
+                    The header row was auto-detected from the first row containing "qty".
+                </p>
+                <div id="column-map-list" class="space-y-4 max-h-[60vh] overflow-y-auto pr-1"></div>
+
+                <!-- Upload progress -->
+                <div id="upload-progress-wrap" class="mt-4">
+                    <div class="flex justify-between text-xs text-gray-500 mb-1">
+                        <span id="upload-progress-label">Uploading…</span>
+                        <span id="upload-progress-pct">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-100 rounded-full h-2">
+                        <div id="upload-progress-bar" class="bg-indigo-500 h-2 rounded-full transition-all" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-5">
+                    <button id="step3-back"
+                        class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 font-semibold transition">
+                        <i class="fas fa-arrow-left mr-1"></i> Back
+                    </button>
+                    <button id="step3-upload"
+                        class="flex-1 bg-green-600 text-white py-2.5 rounded-lg hover:bg-green-700 font-semibold transition">
+                        <i class="fas fa-upload mr-1"></i> Upload Items
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
+    <!-- END upload-data-section -->
 
     <div id="section-content" class="container mx-auto p-4 sm:p-6 max-w-xl hidden">
         <button id="back-to-dashboard" class="mb-4 bg-gray-200 text-gray-800 p-2 rounded-lg hover:bg-gray-300">Back to Dashboard</button>
@@ -136,6 +308,8 @@
         </div>
     </div>
 
+    <!-- SheetJS for client-side Excel parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="/static/js/script.js"></script>
 </body>
 </html>

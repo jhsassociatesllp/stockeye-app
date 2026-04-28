@@ -9,6 +9,9 @@ let isExitConfirmed = false;
 // ✅ Skip exit confirmation for internal navigation (like login redirect)
 let isNavigatingInternally = false;
 
+// Add after let isNavigatingInternally = false;
+let userRole = 'user'; // default role
+
 
 if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     API_BASE_URL = "http://localhost:8000";
@@ -24,6 +27,25 @@ document.addEventListener("DOMContentLoaded", () => {
     if (photoSection) photoSection.classList.add("hidden");
     if (signatureSection) signatureSection.classList.add("hidden");
 });
+
+// Function to determine user role based on email
+function getUserRole(email) {
+    const managerKeywords = [
+        ['vasu', 'gadde'],
+        ['huzefa', 'kaka'],
+        ['aditya', 'more']
+    ];
+    
+    const emailLower = email.toLowerCase();
+    
+    for (const keywords of managerKeywords) {
+        if (keywords.every(keyword => emailLower.includes(keyword))) {
+            return 'manager';
+        }
+    }
+    
+    return 'user';
+}
 
 
 /* -------- Utility Functions -------- */
@@ -58,21 +80,41 @@ function updateSectionTick(section) {
     }
 }
 
+// function updateButtons() {
+//     const sectionList = document.getElementById('section-list');
+//     const sectionContent = document.getElementById('section-content');
+//     const sendEmailSection = document.getElementById('send-email-section');
+//     const submitBtn = document.getElementById('submit-audit');
+//     const exportBtn = document.getElementById('export-excel');
+
+//     const isDashboardVisible =
+//         !sectionList.classList.contains('hidden') &&
+//         sectionContent.classList.contains('hidden') &&
+//         sendEmailSection.classList.contains('hidden');
+//     const isDesktop = window.innerWidth > 640;
+
+//     if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
+//     if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible); // Ignore isDesktop for now
+// }
+
 function updateButtons() {
     const sectionList = document.getElementById('section-list');
     const sectionContent = document.getElementById('section-content');
     const sendEmailSection = document.getElementById('send-email-section');
+    const stockCountSection = document.getElementById('stock-count-section');  // ✅ Add this
+    const uploadDataSection = document.getElementById('upload-data-section');  // ✅ Add this
     const submitBtn = document.getElementById('submit-audit');
     const exportBtn = document.getElementById('export-excel');
 
     const isDashboardVisible =
         !sectionList.classList.contains('hidden') &&
         sectionContent.classList.contains('hidden') &&
-        sendEmailSection.classList.contains('hidden');
-    const isDesktop = window.innerWidth > 640;
+        sendEmailSection.classList.contains('hidden') &&
+        stockCountSection.classList.contains('hidden') &&  // ✅ Add this
+        uploadDataSection.classList.contains('hidden');    // ✅ Add this
 
     if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
-    if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible); // Ignore isDesktop for now
+    if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible);
 }
 
 // Custom Popup (Modal)
@@ -204,24 +246,48 @@ function toggleSubmitButton() {
 // Global back-to-dashboard handler
 const backToDashboardButton = document.getElementById('back-to-dashboard');
 if (backToDashboardButton) {
+    // backToDashboardButton.onclick = () => {
+
+    //     document.getElementById('section-content')?.classList.add('hidden');
+    //     document.getElementById('section-list')?.classList.remove('hidden');
+    //     document.getElementById('photo-section').classList.add('hidden');
+    //     document.getElementById('signature-section').classList.add('hidden');
+    //     const video = document.getElementById('video');
+    //     if (video && video.srcObject) {
+    //         video.srcObject.getTracks().forEach(track => track.stop());
+    //         video.srcObject = null;
+    //     }
+    //     if (typeof window.loadDashboard === 'function') {
+    //         window.loadDashboard();
+    //     }
+    //     document.getElementById('submit-audit')?.classList.remove('hidden');
+    //     document.getElementById('export-excel')?.classList.remove('hidden');
+    //     toggleSubmitButton();
+    // };
+
     backToDashboardButton.onclick = () => {
-        document.getElementById('section-content')?.classList.add('hidden');
-        document.getElementById('section-list')?.classList.remove('hidden');
-        document.getElementById('photo-section').classList.add('hidden');
-        document.getElementById('signature-section').classList.add('hidden');
-        const video = document.getElementById('video');
-        if (video && video.srcObject) {
-            video.srcObject.getTracks().forEach(track => track.stop());
-            video.srcObject = null;
-        }
-        if (typeof window.loadDashboard === 'function') {
-            window.loadDashboard();
-        }
-        document.getElementById('submit-audit')?.classList.remove('hidden');
-        document.getElementById('export-excel')?.classList.remove('hidden');
-        toggleSubmitButton();
-    };
+    document.getElementById('section-content')?.classList.add('hidden');
+    document.getElementById('section-list')?.classList.remove('hidden');
+    document.getElementById('photo-section').classList.add('hidden');
+    document.getElementById('signature-section').classList.add('hidden');
+    document.getElementById('send-email-section').classList.add('hidden');  // existing
+    document.getElementById('stock-count-section')?.classList.add('hidden');  // ✅ Add this
+    document.getElementById('upload-data-section')?.classList.add('hidden');  // ✅ Add this
+    
+    const video = document.getElementById('video');
+    if (video && video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+        video.srcObject = null;
+    }
+    if (typeof window.loadDashboard === 'function') {
+        window.loadDashboard();
+    }
+    document.getElementById('submit-audit')?.classList.remove('hidden');
+    document.getElementById('export-excel')?.classList.remove('hidden');
+    toggleSubmitButton();
+};
 }
+
 
 // Handle dashboard and section loading
 if (document.getElementById('section-list')) {
@@ -265,6 +331,17 @@ if (document.getElementById('section-list')) {
             }
 
             document.getElementById('user-info').textContent = `Welcome, ${data.data.name}`;
+
+            // ✅ Determine user role
+            userRole = getUserRole(data.data.email);
+            console.log('User role:', userRole);
+
+            // Show/hide Upload Data menu item based on role
+            const uploadDataMenuItem = document.getElementById('nav-upload-data-item');
+            if (uploadDataMenuItem) {
+                uploadDataMenuItem.style.display = userRole === 'manager' ? 'block' : 'none';
+            }
+
 
             const sectionsRes = await fetch(`${API_BASE_URL}/api/get-sections`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -775,6 +852,7 @@ if (document.getElementById('section-list')) {
                     if (last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 };
             }
+
 
             else if (section === 'observations_on_stacking') {
                 const questions = [
@@ -1532,6 +1610,7 @@ if (document.getElementById('section-list')) {
                 }
             }
         }
+
         else if (section === 'observations_on_stacking' || section === 'observations_on_warehouse_operations' || section === 'observations_on_warehouse_record_keeping' || section === 'observations_on_wh_infrastructure' || section === 'observations_on_quality_operation' || section === 'checklist_wrt_exchange_circular_mentha_oil' || section === 'checklist_wrt_exchange_circular_metal' || section === 'checklist_wrt_exchange_circular_cotton_bales') {
             data.questions = [];
             const remarksInputs = document.querySelectorAll('[id^="remarks"]');
@@ -1702,14 +1781,25 @@ closeSidebar.onclick = () => {
 };
 
 // 🟩 Navigation actions
+// document.getElementById('nav-checklist').onclick = () => {
+//     sidebar.classList.add('-translate-x-full');
+//     document.getElementById('send-email-section').classList.add('hidden');
+//     document.getElementById('section-list').classList.remove('hidden');
+
+//     document.getElementById('submit-audit')?.classList.remove('hidden');
+//     document.getElementById('export-excel')?.classList.remove('hidden');
+
+// };
+
 document.getElementById('nav-checklist').onclick = () => {
     sidebar.classList.add('-translate-x-full');
     document.getElementById('send-email-section').classList.add('hidden');
+    document.getElementById('stock-count-section').classList.add('hidden');  // ✅ Add this
+    document.getElementById('upload-data-section').classList.add('hidden');  // ✅ Add this
     document.getElementById('section-list').classList.remove('hidden');
 
     document.getElementById('submit-audit')?.classList.remove('hidden');
     document.getElementById('export-excel')?.classList.remove('hidden');
-
 };
 
 document.getElementById('nav-send-email').onclick = () => {
@@ -1721,6 +1811,41 @@ document.getElementById('nav-send-email').onclick = () => {
     document.getElementById('submit-audit')?.classList.add('hidden');
     document.getElementById('export-excel')?.classList.add('hidden');
 };
+
+// ✅ Stock Count Navigation
+document.getElementById('nav-stock-count').onclick = () => {
+    sidebar.classList.add('-translate-x-full');
+    document.getElementById('section-list').classList.add('hidden');
+    document.getElementById('send-email-section').classList.add('hidden');
+    document.getElementById('stock-count-section').classList.remove('hidden');
+    document.getElementById('upload-data-section').classList.add('hidden');
+    
+    // Hide Submit and Export buttons
+    document.getElementById('submit-audit')?.classList.add('hidden');
+    document.getElementById('export-excel')?.classList.add('hidden');
+};
+
+// ✅ Upload Data Navigation (for managers)
+const navUploadDataBtn = document.getElementById('nav-upload-data');
+if (navUploadDataBtn) {
+    navUploadDataBtn.onclick = () => {
+        if (userRole !== 'manager') {
+            showPopup('Access denied. Manager access required.', 'error');
+            return;
+        }
+        
+        sidebar.classList.add('-translate-x-full');
+        document.getElementById('section-list').classList.add('hidden');
+        document.getElementById('send-email-section').classList.add('hidden');
+        document.getElementById('stock-count-section').classList.add('hidden');
+        document.getElementById('upload-data-section').classList.remove('hidden');
+        
+        // Hide Submit and Export buttons
+        document.getElementById('submit-audit')?.classList.add('hidden');
+        document.getElementById('export-excel')?.classList.add('hidden');
+    };
+}
+
 
 
 const sendEmailForm = document.getElementById('send-email-form');
@@ -1861,3 +1986,310 @@ async function clearAllSectionData() {
         console.warn('Failed to clear section data on server:', err);
     }
 }
+
+// ========== UPLOAD DATA SECTION ==========
+const uploadItemsForm = document.getElementById('upload-items-form');
+if (uploadItemsForm) {
+    uploadItemsForm.onsubmit = async (e) => {
+        e.preventDefault();
+        
+        const token = localStorage.getItem('access_token');
+        if (!token) return showPopup('Please login first.', 'warning');
+        
+        if (userRole !== 'manager') {
+            showPopup('Access denied. Manager access required.', 'error');
+            return;
+        }
+        
+        const fileInput = document.getElementById('upload-file');
+        const submitBtn = uploadItemsForm.querySelector('button[type="submit"]');
+        
+        if (fileInput.files.length === 0) {
+            showPopup('Please select a file to upload.', 'warning');
+            return;
+        }
+        
+        // Show uploading state
+        submitBtn.disabled = true;
+        const originalText = submitBtn.textContent;
+        submitBtn.textContent = 'Uploading...';
+        
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/upload-items`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            
+            const text = await res.text();
+            let data = {};
+            try { data = JSON.parse(text); } catch { }
+            
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
+            
+            if (!res.ok) {
+                showPopup(data.message || 'Failed to upload items', 'error');
+                return;
+            }
+            
+            // Clear file input
+            fileInput.value = '';
+            
+            showPopup(`Successfully uploaded ${data.data.count} items ✅`, 'success');
+            
+        } catch (err) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
+            showPopup('Error uploading: ' + err.message, 'error');
+        }
+    };
+}
+
+// ========== STOCK COUNT SECTION ==========
+let stockItems = [];
+let filteredStockItems = [];
+
+// Load Stock Count Items
+async function loadStockCountItems(searchQuery = '') {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    
+    try {
+        const url = searchQuery 
+            ? `${API_BASE_URL}/api/get-items?search=${encodeURIComponent(searchQuery)}`
+            : `${API_BASE_URL}/api/get-items`;
+        
+        const res = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const text = await res.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch { }
+        
+        if (!res.ok) {
+            showPopup(data.message || 'Failed to load items', 'error');
+            return;
+        }
+        
+        stockItems = data.data.items;
+        filteredStockItems = stockItems;
+        renderStockItems();
+        
+    } catch (err) {
+        console.error('Load stock items error:', err);
+        showPopup('Error loading items: ' + err.message, 'error');
+    }
+}
+
+// Render Stock Items
+function renderStockItems() {
+    const listContainer = document.getElementById('stock-items-list');
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = '';
+    
+    if (filteredStockItems.length === 0) {
+        listContainer.innerHTML = '<p class="text-gray-500 text-center py-4">No items found. Please ask your manager to upload item data.</p>';
+        return;
+    }
+    
+    filteredStockItems.forEach((item, index) => {
+        const itemCard = document.createElement('div');
+        itemCard.className = 'bg-white border rounded-lg shadow-sm';
+        itemCard.id = `stock-item-${index}`;
+        
+        const hasData = item.physical_amount || item.remarks;
+        
+        itemCard.innerHTML = `
+            <div class="p-4 flex justify-between items-center cursor-pointer" id="stock-header-${index}">
+                <div class="flex-1">
+                    <div class="font-semibold text-gray-800">${item.item_name}</div>
+                    <div class="text-sm text-gray-500">Code: ${item.item_code}</div>
+                    ${hasData ? '<div class="text-xs text-green-600 mt-1"><i class="fas fa-check-circle"></i> Counted</div>' : ''}
+                </div>
+                <div>
+                    <i class="fas fa-chevron-down text-gray-400 transition-transform" id="stock-arrow-${index}"></i>
+                </div>
+            </div>
+            
+            <div class="hidden p-4 pt-0 border-t" id="stock-body-${index}">
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Physical Amount</label>
+                        <input 
+                            type="number" 
+                            id="physical-amount-${index}" 
+                            value="${item.physical_amount || ''}"
+                            class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" 
+                            placeholder="Enter counted amount"
+                            step="any"
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
+                        <input 
+                            type="text" 
+                            id="remarks-${index}" 
+                            value="${item.remarks || ''}"
+                            class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" 
+                            placeholder="Optional remarks"
+                        >
+                    </div>
+                    <button 
+                        id="save-stock-item-${index}" 
+                        class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700"
+                    >
+                        Save
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        listContainer.appendChild(itemCard);
+        
+        // Toggle expand/collapse
+        document.getElementById(`stock-header-${index}`).onclick = () => {
+            const body = document.getElementById(`stock-body-${index}`);
+            const arrow = document.getElementById(`stock-arrow-${index}`);
+            
+            if (body.classList.contains('hidden')) {
+                body.classList.remove('hidden');
+                arrow.style.transform = 'rotate(180deg)';
+            } else {
+                body.classList.add('hidden');
+                arrow.style.transform = 'rotate(0deg)';
+            }
+        };
+        
+        // Save button handler
+        document.getElementById(`save-stock-item-${index}`).onclick = async () => {
+            await saveStockItem(item, index);
+        };
+    });
+}
+
+// Save Stock Item
+async function saveStockItem(item, index) {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    
+    const physicalAmount = document.getElementById(`physical-amount-${index}`).value;
+    const remarks = document.getElementById(`remarks-${index}`).value;
+    
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/save-stock-count-item`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                item_code: item.item_code,
+                item_name: item.item_name,
+                physical_amount: physicalAmount,
+                remarks: remarks
+            })
+        });
+        
+        const text = await res.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch { }
+        
+        if (!res.ok) {
+            showPopup(data.message || 'Failed to save', 'error');
+            return;
+        }
+        
+        showPopup('Item saved successfully ✅', 'success');
+        
+        // Update local data
+        item.physical_amount = physicalAmount;
+        item.remarks = remarks;
+        
+        // Re-render to show green tick
+        renderStockItems();
+        
+    } catch (err) {
+        console.error('Save stock item error:', err);
+        showPopup('Error saving: ' + err.message, 'error');
+    }
+}
+
+// Search Handler
+const stockSearchInput = document.getElementById('stock-search');
+if (stockSearchInput) {
+    let searchTimeout;
+    stockSearchInput.oninput = (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            const query = e.target.value.toLowerCase().trim();
+            
+            if (query === '') {
+                filteredStockItems = stockItems;
+            } else {
+                filteredStockItems = stockItems.filter(item => 
+                    item.item_code.toLowerCase().includes(query) ||
+                    item.item_name.toLowerCase().includes(query)
+                );
+            }
+            
+            renderStockItems();
+        }, 300);
+    };
+}
+
+// Submit Stock Count
+const submitStockCountBtn = document.getElementById('submit-stock-count');
+if (submitStockCountBtn) {
+    submitStockCountBtn.onclick = async () => {
+        const token = localStorage.getItem('access_token');
+        if (!token) return;
+        
+        // Confirm submission
+        if (!confirm('Are you sure you want to submit the stock count? This will mark it as complete.')) {
+            return;
+        }
+        
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/submit-stock-count`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const text = await res.text();
+            let data = {};
+            try { data = JSON.parse(text); } catch { }
+            
+            if (!res.ok) {
+                showPopup(data.message || 'Failed to submit', 'error');
+                return;
+            }
+            
+            showPopup('Stock count submitted successfully ✅', 'success');
+            
+            // Go back to dashboard
+            setTimeout(() => {
+                document.getElementById('back-to-dashboard')?.click();
+            }, 1500);
+            
+        } catch (err) {
+            console.error('Submit stock count error:', err);
+            showPopup('Error submitting: ' + err.message, 'error');
+        }
+    };
+}
+
+// Load items when Stock Count section is opened
+document.getElementById('nav-stock-count').addEventListener('click', () => {
+    setTimeout(() => {
+        loadStockCountItems();
+    }, 100);
+});

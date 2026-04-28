@@ -1,14 +1,13 @@
 import datetime
 import os
 import re
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import timezone
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException, Request, Response, status, Query, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
-# from passlib.context import CryptContext
 import logging
 import requests
 from app.auth import *
@@ -48,7 +47,9 @@ import os, io, base64, re
 from docx import Document
 from docx.shared import Pt, Inches
 import bcrypt
-
+import pandas as pd
+from bson import ObjectId
+from pydantic import BaseModel
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -67,7 +68,7 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 # Mount static files for serving HTML/CSS/JS
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# CORS configuration (explicit origin for frontend)
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -75,9 +76,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Password hashing context
-# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Base response format
 base_response = {
@@ -102,61 +100,43 @@ def validate_password(password: str) -> bool:
     return True
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  AUTH ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.post("/api/register")
 async def register(user: UserRegister):
     logger.info(f"Register attempt for email: {user.email}")
-    logger.info(f"User details: Name: {user.name}, Email: {user.email}, Password: {user.password}")
     try:
         if not validate_password(user.password):
             return JSONResponse(
                 content={"message": "Invalid password format", "success": False},
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-
         if user.password != user.confirm_password:
             return JSONResponse(
                 content={"message": "Passwords do not match", "success": False},
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-
         existing_user = users.find_one({"email": user.email})
-        print(existing_user)
         if existing_user:
-            logger.warning(f"Email already registered: {user.email}")
             return JSONResponse(
                 content={"message": "Email already registered", "success": False},
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-
-        # hashed_password = pwd_context.hash(user.password[:72])
-        # users.insert_one({
-        #     "name": user.name,
-        #     "email": user.email,
-        #     "password_hash": hashed_password,
-        #     "created_at": datetime.now(timezone.utc),
-        # })
-        
         hashed_password = bcrypt.hashpw(
-            user.password.encode("utf-8"),
-            bcrypt.gensalt()
+            user.password.encode("utf-8"), bcrypt.gensalt()
         ).decode("utf-8")
-
         users.insert_one({
             "name": user.name,
             "email": user.email,
             "password_hash": hashed_password,
             "created_at": datetime.now(timezone.utc),
         })
-
         return JSONResponse(
-            content={
-                "message": "User registered successfully",
-                "success": True,
-                "data": {"email": user.email}
-            },
+            content={"message": "User registered successfully", "success": True, "data": {"email": user.email}},
             status_code=status.HTTP_201_CREATED
         )
-
     except Exception as e:
         logger.error(f"Error in register: {str(e)}")
         return JSONResponse(
@@ -165,121 +145,31 @@ async def register(user: UserRegister):
         )
 
 
-# @app.post("/api/login")
-# def login(user: UserLogin):
-#     logger.info(f"Login attempt for email: {user.email}")
-#     logger.info(f"Email: {user.email}, Password: {user.password}")
-#     try:
-#         db_user = users.find_one({"email": user.email})
-        
-#         print(f"type(users): {type(users)}")
-#         print(f"type(db_user): {type(db_user)}")
-#         print(f"repr(db_user): {repr(db_user)}")
-#         logger.info(f"type(users): {type(users)}")
-#         logger.info(f"type(db_user): {type(db_user)}")
-#         logger.info(f"repr(db_user): {repr(db_user)}")
-#         logger.info("User found")
-#         print("Db User: ", db_user)
-#         # if not db_user or not pwd_context.verify(user.password, db_user["password_hash"]):
-#         #     logger.info("User not found")
-#         #     logger.warning(f"Invalid credentials for email: {user.email}")
-#         #     return JSONResponse(
-#         #         content={"message": "Invalid email or password", "success": False},
-#         #         status_code=status.HTTP_401_UNAUTHORIZED
-#         #     )
-        
-#         logger.info("Getting password and hash")
-#         password = user.password
-#         password_hash = db_user["password_hash"]
-#         logger.info(f"Password Hash from DB: {password_hash}")
-
-#         if not bcrypt.checkpw(
-#             password.encode("utf-8"),
-#             password_hash.encode("utf-8")
-#         ):
-            
-#             return JSONResponse(
-#                 {"message": "Invalid email or password", "success": False},
-#                 status_code=401
-#             )
-
-#         # if not pwd_context.verify(password, password_hash):
-#         #     return JSONResponse(
-#         #         content={"message": "Invalid email or password", "success": False},
-#         #         status_code=401
-#         #     )
-
-#         token = create_jwt({"sub": user.email})
-#         logger.info("Login successful, token generated")
-#         return JSONResponse(
-#             content={
-#                 "message": "Logged in successfully",
-#                 "success": True,
-#                 "data": {"access_token": token}
-#             },
-#             status_code=status.HTTP_200_OK
-#         )
-
-#     except Exception as e:
-#         logger.error(f"Error in login: {str(e)}")
-#         return JSONResponse(
-#             content={"message": f"Server error: {str(e)}", "success": False},
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-#         )
-
 @app.post("/api/login")
 def login(user: UserLogin):
     logger.info(f"Login attempt for email: {user.email}")
-
     db_user = users.find_one({"email": user.email})
     if not db_user:
-        return JSONResponse(
-            {"message": "Invalid email or password", "success": False},
-            status_code=401
-        )
-
+        return JSONResponse({"message": "Invalid email or password", "success": False}, status_code=401)
     password = user.password
     password_hash = db_user.get("password_hash")
-
     if not isinstance(password, str) or not isinstance(password_hash, str):
-        logger.error("Invalid password types")
-        return JSONResponse(
-            {"message": "Invalid email or password", "success": False},
-            status_code=401
-        )
-
-    if not bcrypt.checkpw(
-        password.encode("utf-8"),
-        password_hash.encode("utf-8")
-    ):
-        return JSONResponse(
-            {"message": "Invalid email or password", "success": False},
-            status_code=401
-        )
-
+        return JSONResponse({"message": "Invalid email or password", "success": False}, status_code=401)
+    if not bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8")):
+        return JSONResponse({"message": "Invalid email or password", "success": False}, status_code=401)
     token = create_jwt({"sub": user.email})
-
     return JSONResponse(
-        {
-            "message": "Logged in successfully",
-            "success": True,
-            "data": {"access_token": token}
-        },
+        {"message": "Logged in successfully", "success": True, "data": {"access_token": token}},
         status_code=200
     )
 
+
 @app.get("/api/me")
 async def get_me(emp_id: str = Depends(get_current_user)):
-    logger.info(f"Fetching user info for emp_id: {emp_id}")
     try:
         user = users.find_one({"email": emp_id})
         if not user:
-            response.update({
-                "message": "User not found",
-                "status_code": status.HTTP_404_NOT_FOUND
-            })
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=response)
-
+            raise HTTPException(status_code=404, detail="User not found")
         response = base_response.copy()
         response.update({
             "message": "User info retrieved successfully",
@@ -287,37 +177,40 @@ async def get_me(emp_id: str = Depends(get_current_user)):
             "data": {"email": user["email"], "name": user.get("name", "Unknown")},
             "status_code": status.HTTP_200_OK
         })
-        logger.info(f"User info retrieved: {response}")
         return JSONResponse(content=response, status_code=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Error in get_me: {str(e)}")
-        response = base_response.copy()
-        response.update({
-            "message": f"Server error: {str(e)}",
-            "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR
-        })
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=response)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/logout")
+async def logout(emp_id: str = Depends(get_current_user)):
+    return JSONResponse(
+        content={"message": "Logged out successfully", "success": True, "data": None},
+        status_code=200
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  AUDIT SECTIONS
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/api/get-sections")
 async def get_sections(emp_id: str = Depends(get_current_user)):
-    logger.info(f"Fetching sections for emp_id: {emp_id}")
     try:
         today = datetime.now(timezone.utc).date().isoformat()
         audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
-        # if not audit:
-        #     audit = await audit_data_collection.find_one({"user_id": emp_id, "date": today})
-            
+        section_keys = [
+            "general_report", "stock_reconciliation",
+            "observations_on_stacking", "observations_on_warehouse_operations",
+            "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
+            "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
+            "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
+            "stock_count", "signature", "photo"
+        ]
         completion_status = {
-            "general_report": audit["completion_status"].get("general_report", False) if audit and "completion_status" in audit else False,
-            "stock_reconciliation": audit["completion_status"].get("stock_reconciliation", False) if audit and "completion_status" in audit else False,
-            "observations_on_stacking": audit["completion_status"].get("observations_on_stacking", False) if audit and "completion_status" in audit else False,
-            "observations_on_warehouse_operations": audit["completion_status"].get("observations_on_warehouse_operations", False) if audit and "completion_status" in audit else False,
-            "observations_on_warehouse_record_keeping": audit["completion_status"].get("observations_on_warehouse_record_keeping", False) if audit and "completion_status" in audit else False,
-            "observations_on_wh_infrastructure": audit["completion_status"].get("observations_on_wh_infrastructure", False) if audit and "completion_status" in audit else False,
-            "observations_on_quality_operation": audit["completion_status"].get("observations_on_quality_operation", False) if audit and "completion_status" in audit else False,
-            "checklist_wrt_exchange_circular_mentha_oil": audit["completion_status"].get("checklist_wrt_exchange_circular_mentha_oil", False) if audit and "completion_status" in audit else False,
-            "checklist_wrt_exchange_circular_metal": audit["completion_status"].get("checklist_wrt_exchange_circular_metal", False) if audit and "completion_status" in audit else False,
-            "checklist_wrt_exchange_circular_cotton_bales": audit["completion_status"].get("checklist_wrt_exchange_circular_cotton_bales", False) if audit and "completion_status" in audit else False,
+            k: (audit["completion_status"].get(k, False) if audit and "completion_status" in audit else False)
+            for k in section_keys
         }
         response = base_response.copy()
         response.update({
@@ -329,20 +222,15 @@ async def get_sections(emp_id: str = Depends(get_current_user)):
         return JSONResponse(content=response, status_code=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Error in get_sections: {str(e)}")
-        response = base_response.copy()
-        response.update({
-            "message": f"Server error: {str(e)}",
-            "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR
-        })
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=response)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/get-section/{section_name}")
 async def get_section(section_name: str, emp_id: str = Depends(get_current_user)):
-    logger.info(f"Fetching section {section_name} for emp_id: {emp_id}")
     try:
         today = datetime.now(timezone.utc).date().isoformat()
         audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
-        section_data = audit["sections"][section_name] if audit and section_name in audit["sections"] else {}
+        section_data = audit["sections"].get(section_name, {}) if audit and "sections" in audit else {}
         response = base_response.copy()
         response.update({
             "message": f"Section {section_name} retrieved successfully",
@@ -353,361 +241,122 @@ async def get_section(section_name: str, emp_id: str = Depends(get_current_user)
         return JSONResponse(content=response, status_code=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Error in get_section: {str(e)}")
-        response = base_response.copy()
-        response.update({
-            "message": f"Server error: {str(e)}",
-            "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR
-        })
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=response)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/save-section")
 async def save_section(request: Request, emp_id: str = Depends(get_current_user)):
-    logger.info(f"Saving section for emp_id: {emp_id}")
     try:
         body = await request.json()
         section = body.get("section")
         data = body.get("data")
         date = body.get("date")
-        print(data)
-
         if not section or not data or not date:
             return JSONResponse(
                 content={"message": "Missing required fields (section, data, date)", "success": False},
-                status_code=status.HTTP_400_BAD_REQUEST
+                status_code=400
             )
-
         audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": date})
         if not audit:
             audit = {
-                "user_id": emp_id,
-                "date": date,
-                "sections": {},
-                "completion_status": {},
-                "submitted_by": emp_id,
+                "user_id": emp_id, "date": date, "sections": {},
+                "completion_status": {}, "submitted_by": emp_id,
                 "submitted_at": datetime.now(timezone.utc)
             }
-
         audit["sections"][section] = data
         audit["completion_status"][section] = True
-
         if audit.get("_id"):
             temp_audit_data_collection.update_one(
                 {"_id": audit["_id"]},
-                {"$set": {
-                    "sections": audit["sections"],
-                    "completion_status": audit["completion_status"]
-                }}
+                {"$set": {"sections": audit["sections"], "completion_status": audit["completion_status"]}}
             )
         else:
             temp_audit_data_collection.insert_one(audit)
-
         response = base_response.copy()
         response.update({
             "message": f"Section {section} saved successfully",
             "success": True,
             "data": {"completion_status": audit["completion_status"]},
-            "status_code": status.HTTP_200_OK
+            "status_code": 200
         })
-        return JSONResponse(content=response, status_code=status.HTTP_200_OK)
-
+        return JSONResponse(content=response, status_code=200)
     except Exception as e:
         logger.error(f"Error in save_section: {str(e)}")
-        response = base_response.copy()
-        response.update({
-            "message": f"Server error: {str(e)}",
-            "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR
-        })
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=response)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/submit-audit")
 async def submit_audit(emp_id: str = Depends(get_current_user)):
-    logger.info(f"Submitting audit for emp_id: {emp_id}")
     try:
         today = datetime.now(timezone.utc).date().isoformat()
         temp_audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
         if not temp_audit:
-            response = base_response.copy()
-            response.update({
-                "message": "No audit data found to submit",
-                "status_code": status.HTTP_404_NOT_FOUND
-            })
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=response)
-
+            raise HTTPException(status_code=404, detail="No audit data found to submit")
         if not all(temp_audit.get("completion_status", {}).values()):
-            response = base_response.copy()
-            response.update({
-                "message": "Not all sections are completed",
-                "status_code": status.HTTP_400_BAD_REQUEST
-            })
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=response)
-
-        # Copy to main collection
+            raise HTTPException(status_code=400, detail="Not all sections are completed")
         result = audit_data_collection.insert_one(temp_audit)
-        # Delete from temp
         temp_audit_data_collection.delete_one({"_id": temp_audit["_id"]})
-
         response = base_response.copy()
         response.update({
-            "message": "Audit submitted successfully",
-            "success": True,
+            "message": "Audit submitted successfully", "success": True,
             "data": {"submitted": True, "audit_id": str(result.inserted_id)},
-            "status_code": status.HTTP_200_OK
+            "status_code": 200
         })
-        logger.info(f"Audit submitted: {response}")
-        return JSONResponse(content=response, status_code=status.HTTP_200_OK)
+        return JSONResponse(content=response, status_code=200)
     except Exception as e:
         logger.error(f"Error in submit_audit: {str(e)}")
-        response = base_response.copy()
-        response.update({
-            "message": f"Server error: {str(e)}",
-            "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR
-        })
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=response)
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/logout")
-async def logout(emp_id: str = Depends(get_current_user)):
-    logger.info(f"Logging out user: {emp_id}")
+
+@app.post("/api/clear-sections")
+async def clear_sections(emp_id: str = Depends(get_current_user)):
     try:
-        response_data = base_response.copy()
-        response_data.update({
-            "message": "Logged out successfully",
-            "success": True,
-            "data": None,
-            "status_code": status.HTTP_200_OK
-        })
-        logger.info(f"Logout response: {response_data}")
-        return JSONResponse(content=response_data, status_code=status.HTTP_200_OK)
+        today = datetime.now(timezone.utc).date().isoformat()
+        temp_audit_data_collection.delete_one({"user_id": emp_id, "date": today})
+        return JSONResponse({"message": "Sections cleared", "success": True}, status_code=200)
     except Exception as e:
-        logger.error(f"Error in logout: {str(e)}")
-        response_data = base_response.copy()
-        response_data.update({
-            "message": f"Server error: {str(e)}",
-            "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR
-        })
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=response_data)
-    
+        return JSONResponse({"message": str(e), "success": False}, status_code=500)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LOCATION
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/api/get-location")
 def get_location(lat: float = Query(...), lon: float = Query(...)):
     serp_url = f"https://serpapi.com/search?engine=google_maps&q={lat},{lon}&type=search&api_key={SERPAPI_KEY}"
-
     try:
-        # ---- Try SerpApi ----
         serp_res = requests.get(serp_url, timeout=6)
         serp_data = serp_res.json()
-
-        if serp_res.status_code == 200 and ("search_metadata" in serp_data):
+        if serp_res.status_code == 200 and "search_metadata" in serp_data:
             place_result = serp_data.get("place_results", {})
             plus_code = place_result.get("plus_code") or "N/A"
             address = place_result.get("title") or "N/A"
             maps_url = serp_data.get("search_metadata", {}).get("google_maps_url")
-
             if maps_url:
-                return {
-                    "source": "serpapi",
-                    "latitude": lat,
-                    "longitude": lon,
-                    "plus_code": plus_code,
-                    "address": address,
-                    "maps_url": maps_url
-                }
-
-        # else fallback to OSM
+                return {"source": "serpapi", "latitude": lat, "longitude": lon, "plus_code": plus_code, "address": address, "maps_url": maps_url}
         raise Exception("SerpApi failed or incomplete")
-
     except Exception as e:
         print(f"⚠️ SerpApi failed: {e}")
-
-        # ---- Try OSM Fallback ----
         osm_url = f"https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={lat}&lon={lon}"
         osm_res = requests.get(osm_url, headers={"User-Agent": "audit-app"})
         osm_data = osm_res.json()
-        print(osm_data)
-
         address = osm_data.get("display_name", "Address not found")
-        # plus_code = osm_data.get("address", {}).get("postcode", "Not available")
         plus_code = address
-
         maps_url = f"https://www.google.com/maps/search/{lat}%2C{lon}?hl=en"
+        return {"source": "osm", "latitude": lat, "longitude": lon, "plus_code": plus_code, "address": address, "maps_url": maps_url}
 
-        return {
-            "source": "osm",
-            "latitude": lat,
-            "longitude": lon,
-            "plus_code": plus_code,
-            "address": address,
-            "maps_url": maps_url
-        }
-        
-@app.get("/api/export-word")
-async def export_word(emp_id: str = Depends(get_current_user)):
-    logger.info(f"Export Word requested by: {emp_id}")
-    try:
-        today = datetime.now(timezone.utc).date().isoformat()
-        audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
 
-        if not audit_data:
-            # audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
-            # if not audit_data:
-            return JSONResponse(
-                content={"message": "No audit data found for today to export", "success": False},
-                status_code=status.HTTP_404_NOT_FOUND
-            )
+# ─────────────────────────────────────────────────────────────────────────────
+#  EXCEL GENERATION HELPER
+# ─────────────────────────────────────────────────────────────────────────────
 
-        completion = audit_data.get("completion_status", {})
-        # expected_sections = [
-        #     "general_report", "observations_on_stacking", "observations_on_warehouse_operations",
-        #     "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
-        #     "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
-        #     "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
-        #     "signature", "photo"
-        # ]
-        
-        expected_sections = [
-            "general_report", 'stock_reconciliation', "observations_on_stacking", "observations_on_warehouse_operations",
-            "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
-            "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
-            "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
-            "signature", "photo"
-        ]
-        all_completed = all(completion.get(s, False) for s in expected_sections)
-
-        if not all_completed:
-            return JSONResponse(
-                content={"message": "Not all sections are completed. Please complete all sections before exporting.", "success": False},
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-
-        # ===== Build Word Document =====
-        doc = Document()
-
-        # Title and metadata
-        doc.add_heading("Audit Report", level=1)
-        doc.add_paragraph(f"User: {emp_id}")
-        doc.add_paragraph(f"Date: {today}")
-        doc.add_paragraph(" ")
-
-        # --- Helper for formatted section ---
-        def add_section(title: str, paragraphs: list):
-            doc.add_heading(title, level=2)
-            for text in paragraphs:
-                para = doc.add_paragraph()
-                run = para.add_run(text)
-                run.font.size = Pt(11)
-            doc.add_paragraph(" ")
-
-        sections = audit_data.get("sections", {})
-
-        # --- General Report Section ---
-        gr = sections.get("general_report", {})
-        general_paragraphs = []
-        if gr:
-            for k, v in gr.items():
-                general_paragraphs.append(f"{k.replace('_', ' ').title()}: {v}")
-        else:
-            general_paragraphs.append("No general report saved.")
-        add_section("General Report", general_paragraphs)
-
-        # --- Question-Based Sections ---
-        question_sections = [
-            ("observations_on_stacking", "Observations on Stacking"),
-            ("observations_on_warehouse_operations", "Observations on Warehouse Operations"),
-            ("observations_on_warehouse_record_keeping", "Observations on Warehouse Record Keeping"),
-            ("observations_on_wh_infrastructure", "Observations on WH Infrastructure"),
-            ("observations_on_quality_operation", "Observations on Quality Operation"),
-            ("checklist_wrt_exchange_circular_mentha_oil", "Checklist: Mentha Oil"),
-            ("checklist_wrt_exchange_circular_metal", "Checklist: Metals"),
-            ("checklist_wrt_exchange_circular_cotton_bales", "Checklist: Cotton Bales"),
-        ]
-
-        for key, title in question_sections:
-            qlist = sections.get(key, {}).get("questions", [])
-            if not qlist:
-                add_section(title, ["No data saved."])
-                continue
-
-            doc.add_heading(title, level=2)
-            for idx, q in enumerate(qlist, start=1):
-                q_text = (q.get("question") or f"Question {idx}").strip()
-                answer = q.get("answer", "").strip()
-                remarks = q.get("remarks", "").strip()
-
-                p = doc.add_paragraph()
-                p.add_run(f"{idx}. {q_text}\n").bold = True
-                p.add_run(f"Answer: {answer}\n")
-                if remarks:
-                    p.add_run(f"Remarks: {remarks}\n")
-                doc.add_paragraph(" ")
-
-        # === Signature Section ===
-        sig = sections.get("signature", {}).get("signature")
-        doc.add_heading("Signature", level=2)
-        if sig:
-            try:
-                img_data = re.sub("^data:image/.+;base64,", "", sig)
-                img_bytes = io.BytesIO(base64.b64decode(img_data))
-                doc.add_paragraph("Below is the signature captured during the audit:")
-                doc.add_picture(img_bytes, width=Inches(2.5))
-            except Exception as e:
-                doc.add_paragraph(f"⚠️ Unable to embed signature image: {e}")
-        else:
-            doc.add_paragraph("Signature not found in the audit record.")
-        doc.add_paragraph(" ")
-
-        # === Photo Section ===
-        photo_data = sections.get("photo", {}).get("photo")
-        maps_url = sections.get("photo", {}).get("maps_url")
-        doc.add_heading("Photo", level=2)
-        if maps_url:
-            doc.add_paragraph(f"Maps URL: {maps_url}")
-        if photo_data:
-            try:
-                img_data = re.sub("^data:image/.+;base64,", "", photo_data)
-                img_bytes = io.BytesIO(base64.b64decode(img_data))
-                doc.add_paragraph("Below is the photo captured during the audit:")
-                doc.add_picture(img_bytes, width=Inches(3.5))
-            except Exception as e:
-                doc.add_paragraph(f"⚠️ Unable to embed photo image: {e}")
-        else:
-            doc.add_paragraph("Photo not found in the audit record.")
-        doc.add_paragraph(" ")
-
-        # Footer
-        doc.add_paragraph("Report generated by Audit App")
-
-        # --- Stream the file back ---
-        file_stream = io.BytesIO()
-        doc.save(file_stream)
-        file_stream.seek(0)
-        filename = f"audit_{emp_id}_{today}.docx"
-        headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"}
-
-        return StreamingResponse(
-            file_stream,
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            headers=headers
-        )
-
-    except Exception as e:
-        logger.error(f"Error in export_word: {str(e)}")
-        return JSONResponse(
-            content={"message": f"Server error: {str(e)}", "success": False},
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-# -----------------------------------------------------------------
-#  Helper – generate the Excel file (used by both endpoints)
-# -----------------------------------------------------------------
 async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
-    """Return the Excel workbook as bytes."""
     today = datetime.now(timezone.utc).date().isoformat()
     wb = Workbook()
-    wb.remove(wb.active)          # drop default sheet
-
+    wb.remove(wb.active)
     sections = audit_data.get("sections", {})
 
-    # ---------- Helper for column widths ----------
     def adjust(ws, widths):
         for col, w in enumerate(widths, start=1):
             ws.column_dimensions[get_column_letter(col)].width = w
@@ -715,7 +364,7 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
             for cell in row:
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
 
-    # ---------- General Report ----------
+    # General Report
     ws = wb.create_sheet("General Report")
     ws.append(["Field", "Value"])
     gr = sections.get("general_report", {})
@@ -726,33 +375,22 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
         ws.append(["No general report saved.", ""])
     adjust(ws, [40, 20])
 
-    # ---------- Stock Reconciliation ----------
+    # Stock Reconciliation
     ws = wb.create_sheet("Stock Reconciliation")
-    ws.append([
-        "Commodity", "Stock Type", "Quantity as per Registered",
-        "Physical", "Difference", "Remarks"
-    ])
+    ws.append(["Commodity Name", "Stock Type", "Qty as per Registered", "Qty as per Physical", "Difference", "Remarks"])
     stock = sections.get("stock_reconciliation", {}).get("commodities", [])
     if stock:
         for item in stock:
-            ws.append([
-                item.get("commodity", ""),
-                item.get("commodity", ""),          # stock type = commodity field
-                item.get("qty_registered", ""),
-                item.get("qty_physical", ""),
-                item.get("difference", ""),
-                item.get("remarks", "")
-            ])
+            ws.append([item.get("commodity_name",""), item.get("commodity",""), item.get("qty_registered",""), item.get("qty_physical",""), item.get("difference",""), item.get("remarks","")])
     else:
         ws.append(["No stock data.", "", "", "", "", ""])
     adjust(ws, [20, 20, 20, 20, 20, 30])
-    
 
-    # ---------- Question-based sections ----------
+    # Question-based sections
     q_sections = [
         ("observations_on_stacking", "Observations on Stacking"),
-        ("observations_on_warehouse_operations", "Observations on Warehouse Operations"),
-        ("observations_on_warehouse_record_keeping", "Observations on Warehouse Record Keeping"),
+        ("observations_on_warehouse_operations", "Observations on WH Operations"),
+        ("observations_on_warehouse_record_keeping", "Observations on WH Record Keeping"),
         ("observations_on_wh_infrastructure", "Observations on WH Infrastructure"),
         ("observations_on_quality_operation", "Observations on Quality Operation"),
         ("checklist_wrt_exchange_circular_mentha_oil", "Checklist Mentha Oil"),
@@ -765,16 +403,24 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
         qlist = sections.get(key, {}).get("questions", [])
         if qlist:
             for idx, q in enumerate(qlist, start=1):
-                ws.append([
-                    f"{idx}. {q.get('question', f'Question {idx}').strip()}",
-                    q.get("answer", "").strip(),
-                    q.get("remarks", "").strip()
-                ])
+                ws.append([f"{idx}. {q.get('question', f'Question {idx}').strip()}", q.get("answer","").strip(), q.get("remarks","").strip()])
         else:
             ws.append(["No data saved.", "", ""])
         adjust(ws, [60, 10, 30])
 
-    # ---------- Signature ----------
+    # Stock Count (grouped by sheet)
+    ws = wb.create_sheet("Stock Count")
+    ws.append(["Sheet", "Item Code", "Item Name", "Expected Qty", "Physical Amount", "Remarks"])
+    audit = audit_data
+    stock_count_data = audit.get("stock_count_data", [])
+    if stock_count_data:
+        for item in stock_count_data:
+            ws.append([item.get("sheet_name",""), item.get("item_code",""), item.get("item_name",""), item.get("qty",""), item.get("physical_amount",""), item.get("remarks","")])
+    else:
+        ws.append(["No stock count data.", "", "", "", "", ""])
+    adjust(ws, [20, 20, 30, 15, 15, 30])
+
+    # Signature
     ws = wb.create_sheet("Signature")
     sig = sections.get("signature", {}).get("signature")
     if sig:
@@ -782,8 +428,7 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
             img_data = re.sub("^data:image/.+;base64,", "", sig)
             img_bytes = io.BytesIO(base64.b64decode(img_data))
             img = Image(img_bytes)
-            img.width = 250
-            img.height = 150
+            img.width = 250; img.height = 150
             ws.add_image(img, "A1")
             ws["A3"] = "Signature captured during the audit"
         except Exception as e:
@@ -792,22 +437,18 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
         ws["A1"] = "Signature not found."
     ws.column_dimensions["A"].width = 60
 
-    # ---------- Photo ----------
+    # Photo
     ws = wb.create_sheet("Photo")
     photo = sections.get("photo", {}).get("photo")
     maps_url = sections.get("photo", {}).get("maps_url")
     row = 1
     if maps_url:
-        ws["A1"] = "Maps URL"
-        ws["B1"] = maps_url
-        row += 2
+        ws["A1"] = "Maps URL"; ws["B1"] = maps_url; row += 2
     if photo:
         try:
             img_data = re.sub("^data:image/.+;base64,", "", photo)
             img_bytes = io.BytesIO(base64.b64decode(img_data))
-            img = Image(img_bytes)
-            img.width = 350
-            img.height = 250
+            img = Image(img_bytes); img.width = 350; img.height = 250
             ws.add_image(img, f"A{row}")
             ws[f"A{row + 20}"] = "Photo captured during the audit"
         except Exception as e:
@@ -817,187 +458,378 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
     ws.column_dimensions["A"].width = 60
     ws.column_dimensions["B"].width = 40
 
-    # ---------- Write to bytes ----------
     out = io.BytesIO()
     wb.save(out)
     out.seek(0)
     return out.read()
 
 
-# -----------------------------------------------------------------
-#  SEND EMAIL – attach uploaded PDF + generated Excel
-# -----------------------------------------------------------------
-@app.post("/api/send-email")
-async def send_email(
-    to_email: str = Form(...),
-    attachment: UploadFile = File(...),          # mandatory PDF
-    emp_id: str = Depends(get_current_user)
-):
-    """
-    Send the user-uploaded PDF **and** a freshly generated Excel file.
-    From: MAIL_USERNAME   To: to_email   CC: emp_id (user's e-mail)
-    """
+# ─────────────────────────────────────────────────────────────────────────────
+#  EXPORT EXCEL
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/export-excel")
+async def export_excel(emp_id: str = Depends(get_current_user)):
     try:
         today = datetime.now(timezone.utc).date().isoformat()
-        logger.info(f"Email request → {to_email} (CC {emp_id}) by {emp_id}")
-
-        # ---- 1. Validate uploaded file is PDF ----
-        if not attachment.filename.lower().endswith(".pdf"):
-            return JSONResponse(
-                {"message": "Only PDF files are allowed", "success": False},
-                status_code=400,
-            )
-        pdf_bytes = await attachment.read()
-        pdf_name = attachment.filename
-
-        # ---- 2. Fetch audit data & generate Excel ----
-        audit_data = audit_data_collection.find_one(
-            {"user_id": emp_id, "date": today}
-        )
+        audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
         if not audit_data:
-            return JSONResponse(
-                {"message": "No audit data for today", "success": False},
-                status_code=404,
-            )
-
-        # (optional) you may still enforce completion here – keep the same check as export
+            return JSONResponse({"message": "No audit data for today", "success": False}, status_code=404)
         completion = audit_data.get("completion_status", {})
         expected = [
             "general_report", "stock_reconciliation",
             "observations_on_stacking", "observations_on_warehouse_operations",
             "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
-            "observations_on_quality_operation",
-            "checklist_wrt_exchange_circular_mentha_oil",
-            "checklist_wrt_exchange_circular_metal",
-            "checklist_wrt_exchange_circular_cotton_bales",
+            "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
+            "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
             "signature", "photo"
         ]
         if not all(completion.get(s, False) for s in expected):
-            return JSONResponse(
-                {"message": "Complete all sections before sending e-mail", "success": False},
-                status_code=400,
-            )
+            return JSONResponse({"message": "Complete all sections before exporting", "success": False}, status_code=400)
+        excel_bytes = await generate_excel_bytes(emp_id, audit_data)
+        filename = f"audit_{emp_id}_{today}.xlsx"
+        return StreamingResponse(
+            io.BytesIO(excel_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename*=UTF-8\'\'{filename}'}
+        )
+    except Exception as e:
+        logger.error(f"Export-excel error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SEND EMAIL
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/send-email")
+async def send_email(
+    to_email: str = Form(...),
+    attachment: UploadFile = File(...),
+    emp_id: str = Depends(get_current_user)
+):
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        if not attachment.filename.lower().endswith(".pdf"):
+            return JSONResponse({"message": "Only PDF files are allowed", "success": False}, status_code=400)
+        pdf_bytes = await attachment.read()
+        pdf_name = attachment.filename
+        audit_data = audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        if not audit_data:
+            return JSONResponse({"message": "No audit data for today", "success": False}, status_code=404)
+        completion = audit_data.get("completion_status", {})
+        expected = [
+            "general_report", "stock_reconciliation",
+            "observations_on_stacking", "observations_on_warehouse_operations",
+            "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
+            "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
+            "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
+            "signature", "photo"
+        ]
+        if not all(completion.get(s, False) for s in expected):
+            return JSONResponse({"message": "Complete all sections before sending e-mail", "success": False}, status_code=400)
         excel_bytes = await generate_excel_bytes(emp_id, audit_data)
         excel_name = f"audit_{emp_id}_{today}.xlsx"
-
-        # ---- 3. Build e-mail message ----
         msg = EmailMessage()
         msg["Subject"] = f"Audit Report – {today}"
         msg["From"] = os.getenv("MAIL_USERNAME")
         msg["To"] = to_email
         msg["Cc"] = emp_id
-        msg.set_content(
-            f"""Dear Auditor Manager,
-
-Please find attached:
-1. The PDF you uploaded ({pdf_name})
-2. The audit data in Excel format ({excel_name})
-
-Regards,
-Audit App (via Gmail SMTP)
-"""
-        )
-
-        # PDF attachment
-        msg.add_attachment(
-            pdf_bytes,
-            maintype="application",
-            subtype="pdf",
-            filename=pdf_name,
-        )
-
-        # Excel attachment
-        msg.add_attachment(
-            excel_bytes,
-            maintype="application",
-            subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename=excel_name,
-        )
-
-        # ---- 4. Send via Gmail SMTP ----
-        smtp_server = "smtp.gmail.com"
-        smtp_port = 587
-        smtp_user = os.getenv("MAIL_USERNAME")
-        smtp_pass = os.getenv("MAIL_PASSWORD")
-
-        logger.info(f"Connecting to SMTP as {smtp_user}")
-        with smtplib.SMTP(smtp_server, smtp_port) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.login(smtp_user, smtp_pass)
+        msg.set_content(f"""Dear Auditor Manager,\n\nPlease find attached:\n1. The PDF you uploaded ({pdf_name})\n2. The audit data in Excel format ({excel_name})\n\nRegards,\nAudit App (via Gmail SMTP)\n""")
+        msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=pdf_name)
+        msg.add_attachment(excel_bytes, maintype="application", subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=excel_name)
+        with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+            smtp.ehlo(); smtp.starttls()
+            smtp.login(os.getenv("MAIL_USERNAME"), os.getenv("MAIL_PASSWORD"))
             smtp.send_message(msg)
-
-        logger.info("Email sent successfully")
-        return JSONResponse(
-            {"message": "Email sent successfully", "success": True},
-            status_code=200,
-        )
-
+        return JSONResponse({"message": "Email sent successfully", "success": True}, status_code=200)
     except Exception as e:
         logger.error(f"Send-email error: {e}")
-        return JSONResponse(
-            {"message": f"Failed to send email: {str(e)}", "success": False},
-            status_code=500,
-        )
+        return JSONResponse({"message": f"Failed to send email: {str(e)}", "success": False}, status_code=500)
 
 
-# -----------------------------------------------------------------
-#  EXPORT EXCEL – unchanged (download only the Excel file)
-# -----------------------------------------------------------------
-@app.get("/api/export-excel")
-async def export_excel(emp_id: str = Depends(get_current_user)):
-    """Download the audit data as an Excel file."""
+# ─────────────────────────────────────────────────────────────────────────────
+#  UPLOAD ITEM MASTER  –  NEW JSON endpoint (called by the wizard)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SheetItemsPayload(BaseModel):
+    sheet_name: str
+    items: List[dict]   # each: { item_code, item_name, qty }
+
+class UploadItemsJsonPayload(BaseModel):
+    sheets: List[SheetItemsPayload]
+
+
+@app.post("/api/upload-items-json")
+async def upload_items_json(
+    payload: UploadItemsJsonPayload,
+    emp_id: str = Depends(get_current_user)
+):
+    """
+    Accept pre-parsed item data from the frontend wizard.
+    Each sheet's items are stored with a sheet_name field so the
+    stock-count view can group / filter by sheet.
+
+    All existing items are replaced on each call.
+    """
     try:
-        today = datetime.now(timezone.utc).date().isoformat()
-        logger.info(f"Export-Excel request by {emp_id}")
+        logger.info(f"upload-items-json called by {emp_id}, sheets={[s.sheet_name for s in payload.sheets]}")
 
-        audit_data = temp_audit_data_collection.find_one(
-            {"user_id": emp_id, "date": today}
-        )
-        if not audit_data:
+        all_items = []
+        sheet_summary = []
+
+        for sheet in payload.sheets:
+            sheet_name = sheet.sheet_name.strip()
+            valid_items = []
+
+            for raw in sheet.items:
+                item_code = str(raw.get("item_code", "")).strip()
+                item_name = str(raw.get("item_name", "")).strip()
+                qty       = str(raw.get("qty", "")).strip()
+
+                # Skip blank / sentinel rows
+                if not item_code or not item_name:
+                    continue
+                if item_code.lower() in ("nan", "none", "item code", ""):
+                    continue
+                if item_name.lower() in ("nan", "none", "item name", ""):
+                    continue
+
+                valid_items.append({
+                    "item_code":   item_code,
+                    "item_name":   item_name,
+                    "qty":         qty,
+                    "sheet_name":  sheet_name,
+                    "uploaded_by": emp_id,
+                    "uploaded_at": datetime.now(timezone.utc),
+                })
+
+            all_items.extend(valid_items)
+            sheet_summary.append({"sheet": sheet_name, "count": len(valid_items)})
+            logger.info(f"  Sheet '{sheet_name}': {len(valid_items)} valid items")
+
+        if not all_items:
             return JSONResponse(
-                {"message": "No audit data for today", "success": False},
-                status_code=404,
+                {"message": "No valid items found in the uploaded data. Check that Item Code and Item Name columns are not empty.", "success": False},
+                status_code=400
             )
 
-        # Completion check (same as before)
-        completion = audit_data.get("completion_status", {})
-        expected = [
-            "general_report", "stock_reconciliation",
-            "observations_on_stacking", "observations_on_warehouse_operations",
-            "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
-            "observations_on_quality_operation",
-            "checklist_wrt_exchange_circular_mentha_oil",
-            "checklist_wrt_exchange_circular_metal",
-            "checklist_wrt_exchange_circular_cotton_bales",
-            "signature", "photo"
-        ]
-        if not all(completion.get(s, False) for s in expected):
-            return JSONResponse(
-                {"message": "Complete all sections before exporting", "success": False},
-                status_code=400,
-            )
+        # Replace everything in the collection
+        item_master_collection.delete_many({})
+        item_master_collection.insert_many(all_items)
 
-        excel_bytes = await generate_excel_bytes(emp_id, audit_data)
-        filename = f"audit_{emp_id}_{today}.xlsx"
-        headers = {
-            "Content-Disposition": f'attachment; filename*=UTF-8\'\'{filename}'
-        }
+        logger.info(f"Inserted {len(all_items)} items from {len(payload.sheets)} sheet(s)")
 
-        return StreamingResponse(
-            io.BytesIO(excel_bytes),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers=headers,
+        return JSONResponse(
+            {
+                "message": f"Successfully uploaded {len(all_items)} items from {len(payload.sheets)} sheet(s)",
+                "success": True,
+                "data": {
+                    "total_count": len(all_items),
+                    "sheets": sheet_summary,
+                    "sample_items": [
+                        {"item_code": i["item_code"], "item_name": i["item_name"], "sheet_name": i["sheet_name"]}
+                        for i in all_items[:5]
+                    ]
+                }
+            },
+            status_code=200
         )
 
     except Exception as e:
-        logger.error(f"Export-excel error: {e}")
+        logger.error(f"upload-items-json error: {e}")
+        import traceback; logger.error(traceback.format_exc())
+        return JSONResponse({"message": f"Failed to upload items: {str(e)}", "success": False}, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  LEGACY FILE-UPLOAD ENDPOINT  (kept for backward compatibility)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/upload-items")
+async def upload_items(
+    file: UploadFile = File(...),
+    emp_id: str = Depends(get_current_user)
+):
+    """Original file-upload endpoint – still works but wizard uses /api/upload-items-json instead."""
+    try:
+        fname = file.filename.lower()
+        if not any(fname.endswith(ext) for ext in ('.xlsx', '.xls', '.xlsb', '.csv')):
+            return JSONResponse({"message": "Only Excel (.xlsx/.xls/.xlsb) or CSV files are allowed", "success": False}, status_code=400)
+        contents = await file.read()
+        try:
+            if fname.endswith('.csv'):
+                df = pd.read_csv(io.BytesIO(contents))
+            elif fname.endswith('.xlsb'):
+                df = pd.read_excel(io.BytesIO(contents), engine='pyxlsb')
+            else:
+                df = pd.read_excel(io.BytesIO(contents))
+        except Exception as parse_error:
+            return JSONResponse({"message": f"Could not parse file: {str(parse_error)}", "success": False}, status_code=400)
+
+        item_code_col = next((c for c in df.columns if 'item code' in str(c).lower()), None)
+        item_name_col = next((c for c in df.columns if 'item name' in str(c).lower()), None)
+        if not item_code_col or not item_name_col:
+            return JSONResponse({"message": "Could not find 'Item Code' and 'Item Name' columns.", "success": False}, status_code=400)
+
+        items = []
+        for _, row in df.iterrows():
+            code = str(row[item_code_col]).strip() if pd.notna(row[item_code_col]) else ""
+            name = str(row[item_name_col]).strip() if pd.notna(row[item_name_col]) else ""
+            if code and name and code.lower() not in ['nan','none','','item code'] and name.lower() not in ['nan','none','','item name']:
+                items.append({"item_code": code, "item_name": name, "qty": "", "sheet_name": "Default", "uploaded_by": emp_id, "uploaded_at": datetime.now(timezone.utc)})
+
+        if not items:
+            return JSONResponse({"message": "No valid items found in the file.", "success": False}, status_code=400)
+
+        item_master_collection.delete_many({})
+        item_master_collection.insert_many(items)
+        return JSONResponse({"message": f"Successfully uploaded {len(items)} items", "success": True, "data": {"count": len(items)}}, status_code=200)
+
+    except Exception as e:
+        logger.error(f"Upload items error: {e}")
+        return JSONResponse({"message": f"Failed to upload items: {str(e)}", "success": False}, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  GET ITEMS  (stock count – now returns sheet_name + qty)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/get-items")
+async def get_items(
+    search: str = Query(None),
+    emp_id: str = Depends(get_current_user)
+):
+    try:
+        query = {}
+        if search:
+            query = {"$or": [
+                {"item_code": {"$regex": search, "$options": "i"}},
+                {"item_name": {"$regex": search, "$options": "i"}}
+            ]}
+
+        # Fetch from master — include sheet_name and qty now
+        items = list(item_master_collection.find(
+            query,
+            {"_id": 0, "item_code": 1, "item_name": 1, "sheet_name": 1, "qty": 1}
+        ))
+
+        # Get existing stock-count data for this user today
+        today = datetime.now(timezone.utc).date().isoformat()
+        audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        stock_count_lookup = {}
+        if audit and "stock_count_data" in audit:
+            for sc in audit["stock_count_data"]:
+                stock_count_lookup[sc["item_code"]] = {
+                    "physical_amount": sc.get("physical_amount", ""),
+                    "remarks": sc.get("remarks", "")
+                }
+
+        # Merge
+        for item in items:
+            sc = stock_count_lookup.get(item["item_code"], {})
+            item["physical_amount"] = sc.get("physical_amount", "")
+            item["remarks"] = sc.get("remarks", "")
+            item.setdefault("sheet_name", "")
+            item.setdefault("qty", "")
+
         return JSONResponse(
-            {"message": f"Server error: {str(e)}", "success": False},
-            status_code=500,
+            {"message": "Items retrieved successfully", "success": True, "data": {"items": items}},
+            status_code=200
         )
-        
+    except Exception as e:
+        logger.error(f"Get items error: {e}")
+        return JSONResponse({"message": f"Failed to get items: {str(e)}", "success": False}, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SAVE STOCK COUNT ITEM  (now persists sheet_name)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/save-stock-count-item")
+async def save_stock_count_item(request: Request, emp_id: str = Depends(get_current_user)):
+    try:
+        body = await request.json()
+        item_code      = body.get("item_code")
+        item_name      = body.get("item_name")
+        sheet_name     = body.get("sheet_name", "")
+        physical_amount = body.get("physical_amount", "")
+        remarks        = body.get("remarks", "")
+
+        if not item_code or not item_name:
+            return JSONResponse({"message": "Item code and name are required", "success": False}, status_code=400)
+
+        # Fetch expected qty from item master
+        master = item_master_collection.find_one({"item_code": item_code}, {"_id": 0, "qty": 1})
+        qty = master.get("qty", "") if master else ""
+
+        today = datetime.now(timezone.utc).date().isoformat()
+        audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        if not audit:
+            audit = {
+                "user_id": emp_id, "date": today, "sections": {},
+                "completion_status": {}, "stock_count_data": [],
+                "submitted_by": emp_id, "submitted_at": datetime.now(timezone.utc)
+            }
+        if "stock_count_data" not in audit:
+            audit["stock_count_data"] = []
+
+        item_found = False
+        for item in audit["stock_count_data"]:
+            if item["item_code"] == item_code:
+                item.update({"physical_amount": physical_amount, "remarks": remarks, "item_name": item_name, "sheet_name": sheet_name, "qty": qty})
+                item_found = True
+                break
+
+        if not item_found:
+            audit["stock_count_data"].append({
+                "item_code": item_code, "item_name": item_name,
+                "sheet_name": sheet_name, "qty": qty,
+                "physical_amount": physical_amount, "remarks": remarks
+            })
+
+        if audit.get("_id"):
+            temp_audit_data_collection.update_one(
+                {"_id": audit["_id"]},
+                {"$set": {"stock_count_data": audit["stock_count_data"]}}
+            )
+        else:
+            temp_audit_data_collection.insert_one(audit)
+
+        return JSONResponse({"message": "Stock count item saved successfully", "success": True}, status_code=200)
+
+    except Exception as e:
+        logger.error(f"Save stock count item error: {e}")
+        return JSONResponse({"message": f"Failed to save: {str(e)}", "success": False}, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SUBMIT STOCK COUNT
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/submit-stock-count")
+async def submit_stock_count(emp_id: str = Depends(get_current_user)):
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        if not audit:
+            return JSONResponse({"message": "No stock count data found", "success": False}, status_code=404)
+        if not audit.get("stock_count_data"):
+            return JSONResponse({"message": "Please count at least one item before submitting", "success": False}, status_code=400)
+        temp_audit_data_collection.update_one(
+            {"_id": audit["_id"]},
+            {"$set": {"completion_status.stock_count": True}}
+        )
+        return JSONResponse({"message": "Stock count submitted successfully", "success": True}, status_code=200)
+    except Exception as e:
+        logger.error(f"Submit stock count error: {e}")
+        return JSONResponse({"message": f"Failed to submit: {str(e)}", "success": False}, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  STATIC HTML ROUTES
+# ─────────────────────────────────────────────────────────────────────────────
+
 def get_token(request: Request) -> str:
     token = request.cookies.get("access_token")
     if token:
@@ -1005,9 +837,8 @@ def get_token(request: Request) -> str:
     auth = request.headers.get("Authorization")
     if auth and auth.startswith("Bearer "):
         return auth.split(" ")[1]
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
+    raise HTTPException(status_code=401, detail="Could not validate credentials")
 
-# Static HTML Endpoints
 @app.get("/", response_class=FileResponse)
 async def root(request: Request):
     try:

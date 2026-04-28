@@ -28,3 +28,5 @@ db = client["Audit_App"]
 users = db["Users"]
 temp_audit_data_collection = db["Audit_Data"]
 audit_data_collection = db["audit_data_collection"]
+# Add this after other collection definitions
+item_master_collection = db["item_master"]

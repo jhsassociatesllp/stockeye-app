@@ -12,3 +12,4 @@ openpyxl
 pillow
 python-docx
 pymongo
+pandas
