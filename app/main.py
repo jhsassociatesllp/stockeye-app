@@ -974,3 +974,4 @@ async def serve_login():
 @app.get("/register", response_class=FileResponse)
 async def serve_register():
     return FileResponse(os.path.join(STATIC_DIR, "register.html"))
+    
