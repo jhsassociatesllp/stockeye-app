@@ -70,11 +70,11 @@ function updateButtons() {
     const exportBtn = document.getElementById('export-excel');
 
     const isDashboardVisible =
-        !sectionList.classList.contains('hidden') &&
-        sectionContent.classList.contains('hidden') &&
-        sendEmailSection.classList.contains('hidden') &&
-        stockCountSection.classList.contains('hidden') &&
-        uploadDataSection.classList.contains('hidden');
+        sectionList && !sectionList.classList.contains('hidden') &&
+        sectionContent && sectionContent.classList.contains('hidden') &&
+        (!sendEmailSection || sendEmailSection.classList.contains('hidden')) &&
+        (!stockCountSection || stockCountSection.classList.contains('hidden')) &&
+        (!uploadDataSection || uploadDataSection.classList.contains('hidden'));
 
     if (submitBtn) submitBtn.classList.toggle('hidden', !isDashboardVisible);
     if (exportBtn) exportBtn.classList.toggle('hidden', !isDashboardVisible);
@@ -226,8 +226,30 @@ if (document.getElementById('section-list')) {
             document.getElementById('user-info').textContent = `Welcome, ${data.data.name}`;
             userRole = getUserRole(data.data.email);
 
-            const uploadDataMenuItem = document.getElementById('nav-upload-data-item');
-            if (uploadDataMenuItem) uploadDataMenuItem.style.display = userRole === 'manager' ? 'block' : 'none';
+            try {
+                const adminRes = await fetch(`${API_BASE_URL}/api/check-admin`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (adminRes.ok) {
+                    const aData = await adminRes.json();
+                    const switchAdminBtn = document.getElementById('switch-admin-btn');
+                    if (aData.data?.is_admin && switchAdminBtn) {
+                        switchAdminBtn.classList.remove('hidden');
+                        switchAdminBtn.onclick = () => {
+                            const overlay = document.createElement('div');
+                            overlay.className = "fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center z-50";
+                            const modal = document.createElement('div');
+                            modal.className = "bg-white p-6 rounded-xl shadow-lg text-center w-80";
+                            modal.innerHTML = `<h2 class="text-lg font-semibold mb-3 text-gray-800">Do you want to switch to Control Panel?</h2><div class="flex justify-center gap-4 mt-4"><button id="confirm-switch" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg">Yes</button><button id="cancel-switch" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded-lg">No</button></div>`;
+                            overlay.appendChild(modal);
+                            document.body.appendChild(overlay);
+                            document.getElementById('cancel-switch').onclick = () => overlay.remove();
+                            document.getElementById('confirm-switch').onclick = () => {
+                                isNavigatingInternally = true;
+                                window.location.href = '/static/admin.html';
+                            };
+                        };
+                    }
+                }
+            } catch(e) {}
 
             const sectionsRes = await fetch(`${API_BASE_URL}/api/get-sections`, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -275,25 +297,35 @@ if (document.getElementById('section-list')) {
             const submitButton = document.getElementById('submit-audit');
             if (submitButton) {
                 submitButton.classList.remove('hidden');
-                submitButton.onclick = async () => {
+                submitButton.onclick = () => {
                     const allCompleted = Object.values(completionStatus).every(v => v === true);
                     if (!allCompleted) { showPopup('Please fill the data for all the sections and save that.'); return; }
-                    try {
-                        const res = await fetch(`${API_BASE_URL}/api/submit-audit`, {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                            body: JSON.stringify({})
-                        });
-                        const text = await res.text();
-                        let dataRes;
-                        try { dataRes = JSON.parse(text); } catch { showPopup('Failed to submit audit: Invalid server response'); return; }
-                        if (!res.ok) { showPopup(dataRes.message || 'Failed to submit audit'); return; }
-                        showPopup('Audit submitted successfully ✅', 'success');
-                        completionStatus = {};
-                        localStorage.removeItem('completionStatus');
-                        await clearAllSectionData();
-                        await loadDashboard(true);
-                    } catch (err) { showPopup('Error: ' + err.message); }
+                    
+                    document.getElementById('confirm-submit-msg').textContent = 'Do you want to submit the Checklist Audit?';
+                    const confirmModal = document.getElementById('confirm-submit-modal');
+                    confirmModal.classList.remove('hidden');
+                    
+                    document.getElementById('btn-submit-no').onclick = () => confirmModal.classList.add('hidden');
+                    document.getElementById('btn-submit-yes').onclick = async () => {
+                        confirmModal.classList.add('hidden');
+                        try {
+                            const res = await fetch(`${API_BASE_URL}/api/submit-audit`, {
+                                method: 'POST',
+                                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                body: JSON.stringify({})
+                            });
+                            const text = await res.text();
+                            let dataRes;
+                            try { dataRes = JSON.parse(text); } catch { showPopup('Failed to submit audit: Invalid server response'); return; }
+                            if (!res.ok) { showPopup(dataRes.message || 'Failed to submit audit'); return; }
+                            showPopup('Audit submitted successfully ✅', 'success');
+                            completionStatus = {};
+                            localStorage.removeItem('completionStatus');
+                            await clearAllSectionData();
+                            await loadDashboard(true);
+                            openEmailModal('checklist');
+                        } catch (err) { showPopup('Error: ' + err.message); }
+                    };
                 };
             }
             toggleSubmitButton();
@@ -790,45 +822,42 @@ function showExitModal() {
 const menuIcon = document.getElementById('menu-icon');
 const sidebar = document.getElementById('sidebar');
 const closeSidebar = document.getElementById('close-sidebar');
-menuIcon.onclick = () => sidebar.classList.remove('-translate-x-full');
-closeSidebar.onclick = () => sidebar.classList.add('-translate-x-full');
+if (menuIcon && sidebar) menuIcon.onclick = () => sidebar.classList.remove('-translate-x-full');
+if (closeSidebar && sidebar) closeSidebar.onclick = () => sidebar.classList.add('-translate-x-full');
 
-document.getElementById('nav-checklist').onclick = () => {
-    sidebar.classList.add('-translate-x-full');
-    ['send-email-section','stock-count-section','upload-data-section'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
-    document.getElementById('section-list').classList.remove('hidden');
-    document.getElementById('submit-audit')?.classList.remove('hidden');
-    document.getElementById('export-excel')?.classList.remove('hidden');
-};
-
-document.getElementById('nav-send-email').onclick = () => {
-    sidebar.classList.add('-translate-x-full');
-    document.getElementById('section-list').classList.add('hidden');
-    document.getElementById('send-email-section').classList.remove('hidden');
-    document.getElementById('submit-audit')?.classList.add('hidden');
-    document.getElementById('export-excel')?.classList.add('hidden');
-};
-
-document.getElementById('nav-stock-count').onclick = () => {
-    sidebar.classList.add('-translate-x-full');
-    ['section-list','send-email-section','upload-data-section'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
-    document.getElementById('stock-count-section').classList.remove('hidden');
-    document.getElementById('submit-audit')?.classList.add('hidden');
-    document.getElementById('export-excel')?.classList.add('hidden');
-};
-
-const navUploadDataBtn = document.getElementById('nav-upload-data');
-if (navUploadDataBtn) {
-    navUploadDataBtn.onclick = () => {
-        if (userRole !== 'manager') { showPopup('Access denied. Manager access required.', 'error'); return; }
-        sidebar.classList.add('-translate-x-full');
-        ['section-list','send-email-section','stock-count-section'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
-        document.getElementById('upload-data-section').classList.remove('hidden');
-        document.getElementById('submit-audit')?.classList.add('hidden');
-        document.getElementById('export-excel')?.classList.add('hidden');
-        resetUploadWizard();
+const navChecklist = document.getElementById('nav-checklist');
+if (navChecklist) {
+    navChecklist.onclick = () => {
+        sidebar?.classList.add('-translate-x-full');
+        ['send-email-section','stock-count-section','upload-data-section'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+        document.getElementById('section-list')?.classList.remove('hidden');
+        document.getElementById('submit-audit')?.classList.remove('hidden');
+        document.getElementById('export-excel')?.classList.remove('hidden');
     };
 }
+
+const navSendEmail = document.getElementById('nav-send-email');
+if (navSendEmail) {
+    navSendEmail.onclick = () => {
+        sidebar?.classList.add('-translate-x-full');
+        document.getElementById('section-list')?.classList.add('hidden');
+        document.getElementById('send-email-section')?.classList.remove('hidden');
+        document.getElementById('submit-audit')?.classList.add('hidden');
+        document.getElementById('export-excel')?.classList.add('hidden');
+    };
+}
+
+const navStockCount = document.getElementById('nav-stock-count');
+if (navStockCount) {
+    navStockCount.onclick = () => {
+        sidebar?.classList.add('-translate-x-full');
+        ['section-list','send-email-section','upload-data-section'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+        document.getElementById('stock-count-section')?.classList.remove('hidden');
+        document.getElementById('submit-audit')?.classList.add('hidden');
+        document.getElementById('export-excel')?.classList.add('hidden');
+    };
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  SEND EMAIL
@@ -876,366 +905,7 @@ async function clearAllSectionData() {
     try { await fetch(`${API_BASE_URL}/api/clear-sections`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }); } catch { }
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-//  UPLOAD DATA WIZARD  (3 steps: File → Sheets → Columns)
-// ═════════════════════════════════════════════════════════════════════════════
 
-let wizardWorkbook = null;          // XLSX workbook object
-let wizardParsedSheets = {};        // { sheetName: { columns: [], rows: [], headerRowIdx: number } }
-let wizardSelectedSheets = [];      // array of sheet names the user ticked
-const WIZARD_STEPS = 3;
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-function setWizardStep(n) {
-    document.querySelectorAll('.upload-step').forEach((el, i) => {
-        el.classList.toggle('active', i + 1 === n);
-    });
-    document.querySelectorAll('#wizard-step-indicator .step').forEach((el, i) => {
-        el.classList.toggle('active', i + 1 === n);
-        el.classList.toggle('done', i + 1 < n);
-    });
-    document.getElementById('wizard-progress').style.width = `${Math.round((n / WIZARD_STEPS) * 100)}%`;
-}
-
-function resetUploadWizard() {
-    wizardWorkbook = null;
-    wizardParsedSheets = {};
-    wizardSelectedSheets = [];
-    const fi = document.getElementById('upload-file');
-    if (fi) fi.value = '';
-    document.getElementById('file-selected-info')?.classList.add('hidden');
-    document.getElementById('step1-next') && (document.getElementById('step1-next').disabled = true);
-    document.getElementById('sheet-list') && (document.getElementById('sheet-list').innerHTML = '');
-    document.getElementById('column-map-list') && (document.getElementById('column-map-list').innerHTML = '');
-    document.getElementById('upload-progress-wrap')?.classList.remove('show');
-    setWizardStep(1);
-}
-
-/** Find the header row: first row whose cells contain the word "qty" (case-insensitive).
- *  Returns { headerRowIdx, columns } or null if not found within first 50 rows. */
-function detectHeaderRow(sheetData) {
-    for (let r = 0; r < Math.min(sheetData.length, 50); r++) {
-        const row = sheetData[r];
-        const cellStrings = row.map(c => String(c ?? '').toLowerCase());
-        if (cellStrings.some(c => c.includes('qty') || c.includes('quantity'))) {
-            // Filter out empty column names for the dropdown
-            const columns = row.map((c, i) => ({ label: String(c ?? '').trim() || `Column ${i + 1}`, idx: i }))
-                               .filter(col => col.label);
-            return { headerRowIdx: r, columns };
-        }
-    }
-    return null;
-}
-
-/** Parse all sheets from the workbook into wizardParsedSheets */
-function parseWorkbook(wb) {
-    wizardParsedSheets = {};
-    wb.SheetNames.forEach(name => {
-        const ws = wb.Sheets[name];
-        // Get raw 2-D array
-        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-        const detected = detectHeaderRow(raw);
-        wizardParsedSheets[name] = {
-            rows: raw,
-            headerRowIdx: detected ? detected.headerRowIdx : null,
-            columns: detected ? detected.columns : [],
-            detected: !!detected
-        };
-    });
-}
-
-// ── Step 1: File pick ─────────────────────────────────────────────────────────
-
-const uploadFileInput = document.getElementById('upload-file');
-if (uploadFileInput) {
-    uploadFileInput.addEventListener('change', handleFileSelect);
-}
-
-const fileClearBtn = document.getElementById('file-clear');
-if (fileClearBtn) {
-    fileClearBtn.onclick = () => {
-        document.getElementById('upload-file').value = '';
-        document.getElementById('file-selected-info').classList.add('hidden');
-        document.getElementById('step1-next').disabled = true;
-        wizardWorkbook = null;
-        wizardParsedSheets = {};
-    };
-}
-
-async function handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const step1Next = document.getElementById('step1-next');
-    step1Next.disabled = true;
-    step1Next.textContent = 'Reading file…';
-
-    // Validate extension
-    const nameLower = file.name.toLowerCase();
-    const allowed = ['.xlsx', '.xls', '.xlsb', '.csv'];
-    if (!allowed.some(ext => nameLower.endsWith(ext))) {
-        showPopup('Unsupported file type. Please upload .xlsx, .xls, .xlsb or .csv', 'error');
-        document.getElementById('upload-file').value = '';
-        step1Next.textContent = 'Next: Select Sheets →';
-        return;
-    }
-
-    try {
-        const buffer = await file.arrayBuffer();
-
-        // dense:true is required for .xlsb (binary workbook); harmless for all other formats.
-        const wb = XLSX.read(buffer, { type: 'array', dense: true });
-        wizardWorkbook = wb;
-        parseWorkbook(wb);
-
-        document.getElementById('file-selected-name').textContent = file.name;
-        document.getElementById('file-selected-info').classList.remove('hidden');
-        step1Next.disabled = false;
-        step1Next.textContent = `Next: Select Sheets (${wb.SheetNames.length} sheet${wb.SheetNames.length > 1 ? 's' : ''} found) →`;
-    } catch (err) {
-        showPopup('Could not read file: ' + err.message, 'error');
-        document.getElementById('upload-file').value = '';
-        step1Next.textContent = 'Next: Select Sheets →';
-    }
-}
-
-document.getElementById('step1-next')?.addEventListener('click', () => {
-    if (!wizardWorkbook) return;
-    buildSheetSelectionUI();
-    setWizardStep(2);
-});
-
-// ── Step 2: Sheet selection ───────────────────────────────────────────────────
-
-function buildSheetSelectionUI() {
-    const container = document.getElementById('sheet-list');
-    container.innerHTML = '';
-    const step2Next = document.getElementById('step2-next');
-    step2Next.disabled = true;
-
-    wizardWorkbook.SheetNames.forEach(name => {
-        const info = wizardParsedSheets[name];
-        const wrapper = document.createElement('label');
-        wrapper.className = 'sheet-checkbox-label';
-        const statusIcon = info.detected
-            ? `<span class="ml-auto text-xs text-green-600 font-semibold"><i class="fas fa-check-circle mr-1"></i>Header detected</span>`
-            : `<span class="ml-auto text-xs text-orange-500 font-semibold"><i class="fas fa-exclamation-circle mr-1"></i>No "qty" row found</span>`;
-
-        wrapper.innerHTML = `
-            <input type="checkbox" class="sheet-checkbox w-4 h-4 text-indigo-600 rounded" value="${name}" ${!info.detected ? 'disabled title="No header row with qty found – cannot import this sheet"' : ''}>
-            <span class="flex-1">
-                <span class="block font-semibold">${name}</span>
-                <span class="text-xs text-gray-400">${info.rows.length} rows · ${info.columns.length} columns detected</span>
-            </span>
-            ${statusIcon}
-        `;
-        container.appendChild(wrapper);
-    });
-
-    // Update next button as checkboxes change
-    container.addEventListener('change', () => {
-        const checked = Array.from(container.querySelectorAll('.sheet-checkbox:checked')).map(cb => cb.value);
-        step2Next.disabled = checked.length === 0;
-        step2Next.textContent = checked.length > 0
-            ? `Next: Map Columns (${checked.length} sheet${checked.length > 1 ? 's' : ''}) →`
-            : 'Next: Map Columns →';
-    });
-}
-
-document.getElementById('step2-back')?.addEventListener('click', () => setWizardStep(1));
-
-document.getElementById('step2-next')?.addEventListener('click', () => {
-    wizardSelectedSheets = Array.from(
-        document.querySelectorAll('#sheet-list .sheet-checkbox:checked')
-    ).map(cb => cb.value);
-    if (wizardSelectedSheets.length === 0) { showPopup('Please select at least one sheet.', 'warning'); return; }
-    buildColumnMappingUI();
-    setWizardStep(3);
-});
-
-// ── Step 3: Column mapping ────────────────────────────────────────────────────
-
-function buildColumnMappingUI() {
-    const container = document.getElementById('column-map-list');
-    container.innerHTML = '';
-
-    wizardSelectedSheets.forEach(sheetName => {
-        const info = wizardParsedSheets[sheetName];
-        const cols = info.columns;
-
-        const card = document.createElement('div');
-        card.className = 'col-map-card';
-        card.dataset.sheet = sheetName;
-
-        // Build options HTML
-        const opts = `<option value="">-- Select column --</option>` +
-            cols.map(c => `<option value="${c.idx}">${c.label}</option>`).join('');
-
-        // Try to auto-detect sensible defaults
-        const autoCode = cols.find(c => c.label.toLowerCase().includes('item code') || c.label.toLowerCase().includes('code'));
-        const autoName = cols.find(c => c.label.toLowerCase().includes('item name') || c.label.toLowerCase().includes('name'));
-        const autoQty  = cols.find(c => c.label.toLowerCase().includes('qty') || c.label.toLowerCase().includes('quantity'));
-
-        card.innerHTML = `
-            <h4><i class="fas fa-table text-indigo-500"></i> ${sheetName}</h4>
-            <p class="text-xs text-gray-400 mb-3">Header detected at row ${(info.headerRowIdx ?? 0) + 1} · ${cols.length} columns available</p>
-
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Item Code column <span class="text-red-500">*</span></label>
-                    <select class="col-map-code w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400">
-                        ${opts}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Item Name column <span class="text-red-500">*</span></label>
-                    <select class="col-map-name w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400">
-                        ${opts}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1">Quantity column <span class="text-red-500">*</span></label>
-                    <select class="col-map-qty w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400">
-                        ${opts}
-                    </select>
-                </div>
-            </div>
-
-            <!-- Preview row -->
-            <div class="mt-3 bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs text-gray-500" id="preview-${sheetName.replace(/\s/g,'_')}">
-                <span class="font-semibold text-gray-600">Preview:</span> select columns above to see a sample row.
-            </div>
-        `;
-        container.appendChild(card);
-
-        // Set auto-detected defaults
-        const codeSelect = card.querySelector('.col-map-code');
-        const nameSelect = card.querySelector('.col-map-name');
-        const qtySelect  = card.querySelector('.col-map-qty');
-        if (autoCode) codeSelect.value = autoCode.idx;
-        if (autoName) nameSelect.value = autoName.idx;
-        if (autoQty)  qtySelect.value  = autoQty.idx;
-
-        // Live preview
-        function updatePreview() {
-            const cIdx = parseInt(codeSelect.value);
-            const nIdx = parseInt(nameSelect.value);
-            const qIdx = parseInt(qtySelect.value);
-            const previewEl = document.getElementById(`preview-${sheetName.replace(/\s/g,'_')}`);
-            if (isNaN(cIdx) || isNaN(nIdx) || isNaN(qIdx)) { previewEl.innerHTML = '<span class="font-semibold text-gray-600">Preview:</span> select all three columns to see a sample.'; return; }
-            // Sample from first 3 data rows after header
-            const dataRows = info.rows.slice((info.headerRowIdx ?? 0) + 1).filter(r => r.some(c => String(c).trim())).slice(0, 3);
-            if (dataRows.length === 0) { previewEl.innerHTML = 'No data rows found after header.'; return; }
-            const tags = dataRows.map(row => {
-                const code = String(row[cIdx] ?? '').trim();
-                const name = String(row[nIdx] ?? '').trim();
-                const qty  = String(row[qIdx] ?? '').trim();
-                if (!code && !name) return null;
-                return `<span class="preview-tag"><i class="fas fa-barcode"></i>${code} · ${name} · qty: ${qty || '–'}</span>`;
-            }).filter(Boolean).join('');
-            previewEl.innerHTML = `<span class="font-semibold text-gray-600">Preview (${dataRows.length} rows):</span> ${tags}`;
-        }
-        [codeSelect, nameSelect, qtySelect].forEach(s => s.addEventListener('change', updatePreview));
-        updatePreview();
-    });
-}
-
-document.getElementById('step3-back')?.addEventListener('click', () => setWizardStep(2));
-
-document.getElementById('step3-upload')?.addEventListener('click', async () => {
-    const token = localStorage.getItem('access_token');
-    if (!token) { showPopup('Please login first.', 'warning'); return; }
-    if (userRole !== 'manager') { showPopup('Access denied. Manager access required.', 'error'); return; }
-
-    // Validate all sheets have columns selected
-    const cards = document.querySelectorAll('#column-map-list .col-map-card');
-    let allValid = true;
-    const payload = [];
-
-    cards.forEach(card => {
-        const sheetName = card.dataset.sheet;
-        const info = wizardParsedSheets[sheetName];
-        const cIdx = parseInt(card.querySelector('.col-map-code').value);
-        const nIdx = parseInt(card.querySelector('.col-map-name').value);
-        const qIdx = parseInt(card.querySelector('.col-map-qty').value);
-        if (isNaN(cIdx) || isNaN(nIdx) || isNaN(qIdx)) { showPopup(`Please select all 3 columns for sheet "${sheetName}"`, 'warning'); allValid = false; return; }
-
-        // Extract data rows
-        const dataRows = info.rows.slice((info.headerRowIdx ?? 0) + 1);
-        const items = [];
-        dataRows.forEach(row => {
-            const code = String(row[cIdx] ?? '').trim();
-            const name = String(row[nIdx] ?? '').trim();
-            const qty  = String(row[qIdx] ?? '').trim();
-            if (code && name && code.toLowerCase() !== 'nan' && name.toLowerCase() !== 'nan') {
-                items.push({ item_code: code, item_name: name, qty });
-            }
-        });
-
-        if (items.length === 0) { showPopup(`No valid data rows found in sheet "${sheetName}"`, 'warning'); allValid = false; return; }
-        payload.push({ sheet_name: sheetName, items });
-    });
-
-    if (!allValid || payload.length === 0) return;
-
-    // Show progress
-    const progressWrap = document.getElementById('upload-progress-wrap');
-    const progressBar  = document.getElementById('upload-progress-bar');
-    const progressPct  = document.getElementById('upload-progress-pct');
-    const progressLabel = document.getElementById('upload-progress-label');
-    progressWrap.classList.add('show');
-
-    const uploadBtn = document.getElementById('step3-upload');
-    uploadBtn.disabled = true;
-    uploadBtn.textContent = 'Uploading…';
-
-    // Animate progress bar (fake until complete)
-    let fakeProgress = 0;
-    const fakeInterval = setInterval(() => {
-        fakeProgress = Math.min(fakeProgress + 5, 85);
-        progressBar.style.width = fakeProgress + '%';
-        progressPct.textContent = fakeProgress + '%';
-    }, 100);
-
-    try {
-        progressLabel.textContent = `Uploading ${payload.reduce((s, p) => s + p.items.length, 0)} items from ${payload.length} sheet(s)…`;
-
-        const res = await fetch(`${API_BASE_URL}/api/upload-items-json`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sheets: payload })
-        });
-
-        clearInterval(fakeInterval);
-        progressBar.style.width = '100%';
-        progressPct.textContent = '100%';
-
-        const text = await res.text();
-        let data = {};
-        try { data = JSON.parse(text); } catch { }
-
-        uploadBtn.disabled = false;
-        uploadBtn.innerHTML = '<i class="fas fa-upload mr-1"></i> Upload Items';
-
-        if (!res.ok) { showPopup(data.message || 'Failed to upload items', 'error'); progressWrap.classList.remove('show'); return; }
-
-        const totalCount = data.data?.total_count || 0;
-        const sheetSummary = (data.data?.sheets || []).map(s => `${s.sheet}: ${s.count} items`).join(', ');
-        showPopup(`✅ Uploaded ${totalCount} items (${sheetSummary})`, 'success');
-
-        setTimeout(() => {
-            resetUploadWizard();
-        }, 1500);
-
-    } catch (err) {
-        clearInterval(fakeInterval);
-        progressWrap.classList.remove('show');
-        uploadBtn.disabled = false;
-        uploadBtn.innerHTML = '<i class="fas fa-upload mr-1"></i> Upload Items';
-        showPopup('Error uploading: ' + err.message, 'error');
-    }
-});
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  STOCK COUNT  (sheet-aware)
@@ -1406,19 +1076,94 @@ if (stockSearchInput) {
 
 const submitStockCountBtn = document.getElementById('submit-stock-count');
 if (submitStockCountBtn) {
-    submitStockCountBtn.onclick = async () => {
+    submitStockCountBtn.onclick = () => {
         const token = localStorage.getItem('access_token');
         if (!token) return;
-        if (!confirm('Are you sure you want to submit the stock count? This will mark it as complete.')) return;
+        
+        document.getElementById('confirm-submit-msg').textContent = 'Do you want to submit the Stock Count?';
+        const confirmModal = document.getElementById('confirm-submit-modal');
+        confirmModal.classList.remove('hidden');
+        
+        document.getElementById('btn-submit-no').onclick = () => confirmModal.classList.add('hidden');
+        document.getElementById('btn-submit-yes').onclick = async () => {
+            confirmModal.classList.add('hidden');
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/submit-stock-count`, {
+                    method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+                });
+                const text = await res.text(); let data = {}; try { data = JSON.parse(text); } catch { }
+                if (!res.ok) { showPopup(data.message || 'Failed to submit', 'error'); return; }
+                showPopup('Stock count submitted successfully ✅', 'success');
+                setTimeout(() => document.getElementById('back-to-dashboard')?.click(), 100);
+                openEmailModal('stock-count');
+            } catch (err) { showPopup('Error submitting: ' + err.message, 'error'); }
+        };
+    };
+}
+
+const exportStockCountBtn = document.getElementById('export-stock-count-excel');
+if (exportStockCountBtn) {
+    exportStockCountBtn.onclick = async () => {
+        const token = localStorage.getItem('access_token');
+        if (!token) { showPopup('Please login first.', 'warning'); return; }
+        exportStockCountBtn.disabled = true;
+        exportStockCountBtn.textContent = 'Preparing Excel...';
         try {
-            const res = await fetch(`${API_BASE_URL}/api/submit-stock-count`, {
-                method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+            const res = await fetch(`${API_BASE_URL}/api/export-stock-count-excel`, { method: 'GET', headers: { 'Authorization': `Bearer ${token}` } });
+            if (!res.ok) { let msg = await res.text(); try { msg = JSON.parse(msg).message; } catch { } showPopup(msg || 'Failed to export document.', 'error'); return; }
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'Stock_Count_Report.xlsx';
+            document.body.appendChild(a); a.click(); a.remove();
+            window.URL.revokeObjectURL(url);
+            showPopup('Download started successfully.', 'success');
+        } catch (err) { showPopup('Error exporting: ' + err.message, 'error'); }
+        finally { exportStockCountBtn.disabled = false; exportStockCountBtn.textContent = 'Export to Excel'; }
+    };
+}
+
+function openEmailModal(type) {
+    const modal = document.getElementById('email-modal');
+    modal.classList.remove('hidden');
+    document.getElementById('btn-email-close').onclick = () => modal.classList.add('hidden');
+    
+    document.getElementById('btn-send-modal-email').onclick = async () => {
+        const toEmail = document.getElementById('modal-email-to').value.trim();
+        const bodyTxt = document.getElementById('modal-email-body').value.trim();
+        if(!toEmail) { showPopup('Manager Email is required.', 'warning'); return; }
+        
+        const token = localStorage.getItem('access_token');
+        const btn = document.getElementById('btn-send-modal-email');
+        btn.disabled = true;
+        btn.textContent = 'Generating Excel & Sending...';
+        
+        try {
+            const endpoint = type === 'checklist' ? '/api/export-excel' : '/api/export-stock-count-excel';
+            const resExcel = await fetch(`${API_BASE_URL}${endpoint}`, { method: 'GET', headers: { 'Authorization': `Bearer ${token}` } });
+            if (!resExcel.ok) { throw new Error('Failed to generate excel attachment.'); }
+            const blob = await resExcel.blob();
+            const filename = type === 'checklist' ? 'Checklist_Audit.xlsx' : 'Stock_Count.xlsx';
+            const file = new File([blob], filename, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            
+            const formData = new FormData();
+            formData.append('to_email', toEmail);
+            formData.append('attachment', file);
+            
+            const res = await fetch(`${API_BASE_URL}/api/send-email`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
             });
-            const text = await res.text(); let data = {}; try { data = JSON.parse(text); } catch { }
-            if (!res.ok) { showPopup(data.message || 'Failed to submit', 'error'); return; }
-            showPopup('Stock count submitted successfully ✅', 'success');
-            setTimeout(() => document.getElementById('back-to-dashboard')?.click(), 1500);
-        } catch (err) { showPopup('Error submitting: ' + err.message, 'error'); }
+            if(!res.ok) throw new Error('Failed to send email.');
+            showPopup('Email sent to manager successfully!', 'success');
+            modal.classList.add('hidden');
+        } catch(err) {
+            showPopup(err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Send Email with Attached Data';
+        }
     };
 }
 

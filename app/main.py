@@ -585,6 +585,7 @@ async def upload_items_json(
                 item_code = str(raw.get("item_code", "")).strip()
                 item_name = str(raw.get("item_name", "")).strip()
                 qty       = str(raw.get("qty", "")).strip()
+                extra_col = str(raw.get("extra_col", "")).strip()
 
                 # Skip blank / sentinel rows
                 if not item_code or not item_name:
@@ -598,6 +599,7 @@ async def upload_items_json(
                     "item_code":   item_code,
                     "item_name":   item_name,
                     "qty":         qty,
+                    "extra_col":   extra_col,
                     "sheet_name":  sheet_name,
                     "uploaded_by": emp_id,
                     "uploaded_at": datetime.now(timezone.utc),
@@ -612,6 +614,14 @@ async def upload_items_json(
                 {"message": "No valid items found in the uploaded data. Check that Item Code and Item Name columns are not empty.", "success": False},
                 status_code=400
             )
+
+        # Store this upload in history
+        upload_history_collection.insert_one({
+            "uploaded_by": emp_id,
+            "uploaded_at": datetime.now(timezone.utc),
+            "total_items": len(all_items),
+            "sheets": sheet_summary
+        })
 
         # Replace everything in the collection
         item_master_collection.delete_many({})
@@ -822,8 +832,118 @@ async def submit_stock_count(emp_id: str = Depends(get_current_user)):
         return JSONResponse({"message": "Stock count submitted successfully", "success": True}, status_code=200)
     except Exception as e:
         logger.error(f"Submit stock count error: {e}")
-        return JSONResponse({"message": f"Failed to submit: {str(e)}", "success": False}, status_code=500)
+# ─────────────────────────────────────────────────────────────────────────────
+#  EXPORT STOCK COUNT EXCEL
+# ─────────────────────────────────────────────────────────────────────────────
 
+@app.get("/api/export-stock-count-excel")
+async def export_stock_count_excel(emp_id: str = Depends(get_current_user)):
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        if not audit or not audit.get("stock_count_data"):
+            return JSONResponse({"message": "No stock count data found", "success": False}, status_code=404)
+        
+        completion = audit.get("completion_status", {})
+        if not completion.get("stock_count", False):
+            return JSONResponse({"message": "Please submit stock count before exporting", "success": False}, status_code=400)
+
+        data = audit["stock_count_data"]
+        df = pd.DataFrame(data)
+        
+        columns = ["sheet_name", "item_name", "item_code", "qty", "physical_amount", "remarks"]
+        available_cols = [c for c in columns if c in df.columns]
+        df = df[available_cols]
+        df.rename(columns={
+            "sheet_name": "Sheet Name", 
+            "item_name": "Item Name", 
+            "item_code": "Item Code", 
+            "qty": "Expected Qty", 
+            "physical_amount": "Physical Count", 
+            "remarks": "Remarks"
+        }, inplace=True)
+
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Stock Count')
+        excel_bytes = output.getvalue()
+
+        filename = f"stock_count_{emp_id}_{today}.xlsx"
+        return StreamingResponse(
+            io.BytesIO(excel_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"}
+        )
+    except Exception as e:
+        logger.error(f"Export stock count excel error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  ADMIN ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/check-admin")
+async def check_admin(emp_id: str = Depends(get_current_user)):
+    try:
+        is_admin = admins_collection.find_one({"email": emp_id}) is not None
+        print(is_admin)
+        return JSONResponse({"message": "Admin check", "success": True, "data": {"is_admin": is_admin}}, status_code=200)
+    except Exception as e:
+        logger.error(f"Check admin error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+@app.get("/api/admin/employees-stats")
+async def get_employees_stats(emp_id: str = Depends(get_current_user)):
+    try:
+        if not admins_collection.find_one({"email": emp_id}):
+            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
+        all_users = list(users.find({}, {"_id": 0, "email": 1, "name": 1, "created_at": 1}))
+        for u in all_users:
+            if "created_at" in u and hasattr(u["created_at"], "isoformat"):
+                u["created_at"] = u["created_at"].isoformat()
+        return JSONResponse({"message": "Stats fetched", "success": True, "data": {"users": all_users, "total": len(all_users)}}, status_code=200)
+    except Exception as e:
+        logger.error(f"Stats error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+@app.get("/api/admin/checklist-data")
+async def admin_checklist_data(emp_id: str = Depends(get_current_user)):
+    try:
+        if not admins_collection.find_one({"email": emp_id}):
+            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
+        data = list(audit_data_collection.find({}, {"_id": 0}))
+        for d in data:
+            if "submitted_at" in d and isinstance(d["submitted_at"], datetime):
+                d["submitted_at"] = d["submitted_at"].isoformat()
+        return JSONResponse({"message": "Data fetched", "success": True, "data": {"checklists": data}}, status_code=200)
+    except Exception as e:
+        logger.error(f"Checklist error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+@app.get("/api/admin/uploaded-history")
+async def uploaded_history(emp_id: str = Depends(get_current_user)):
+    try:
+        if not admins_collection.find_one({"email": emp_id}):
+            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
+        
+        # Get history
+        history = list(upload_history_collection.find({}, {"_id": 0}).sort("uploaded_at", -1))
+        for h in history:
+            if "uploaded_at" in h and isinstance(h["uploaded_at"], datetime):
+                h["uploaded_at"] = h["uploaded_at"].isoformat()
+                
+        # Also return current items group by sheet
+        current_items = list(item_master_collection.find({}, {"_id": 0}))
+        
+        return JSONResponse({
+            "message": "Data fetched", 
+            "success": True, 
+            "data": {"history": history, "current_items": current_items}
+        }, status_code=200)
+    except Exception as e:
+        logger.error(f"Upload history error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  STATIC HTML ROUTES

@@ -30,3 +30,5 @@ temp_audit_data_collection = db["Audit_Data"]
 audit_data_collection = db["audit_data_collection"]
 # Add this after other collection definitions
 item_master_collection = db["item_master"]
+admins_collection = db["Admins"]
+upload_history_collection = db["upload_history"]
