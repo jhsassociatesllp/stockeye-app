@@ -950,13 +950,14 @@ async def uploaded_history(emp_id: str = Depends(get_current_user)):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_token(request: Request) -> str:
-    token = request.cookies.get("access_token")
+    token = request.cookies.get("access_token") 
     if token:
         return token
     auth = request.headers.get("Authorization")
     if auth and auth.startswith("Bearer "):
         return auth.split(" ")[1]
     raise HTTPException(status_code=401, detail="Could not validate credentials")
+
 
 @app.get("/", response_class=FileResponse)
 async def root(request: Request):
@@ -974,4 +975,3 @@ async def serve_login():
 @app.get("/register", response_class=FileResponse)
 async def serve_register():
     return FileResponse(os.path.join(STATIC_DIR, "register.html"))
-    
