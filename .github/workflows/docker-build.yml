@@ -28,5 +28,3 @@ jobs:
 
           docker build -t $IMAGE_NAME:$TAG .
           docker push $IMAGE_NAME:$TAG
-
-          
