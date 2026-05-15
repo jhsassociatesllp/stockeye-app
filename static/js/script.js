@@ -635,34 +635,78 @@ if (document.getElementById('section-list')) {
                 }
                 mapLinkOverlay.style.display = 'none';
                 takePhotoButton.disabled = true;
-                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                let fallbackInput = document.getElementById('fallback-camera-input');
+                if (!fallbackInput) {
+                    fallbackInput = document.createElement('input');
+                    fallbackInput.type = 'file';
+                    fallbackInput.id = 'fallback-camera-input';
+                    fallbackInput.accept = 'image/*';
+                    fallbackInput.capture = 'environment';
+                    fallbackInput.className = 'hidden';
+                    document.body.appendChild(fallbackInput);
+                }
+
+                const useFallback = !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+                if (!useFallback) {
                     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } })
                         .then(stream => { video.srcObject = stream; video.onloadedmetadata = () => video.play().then(() => { takePhotoButton.disabled = false; }); })
-                        .catch(err => showPopup('Camera access denied: ' + err.message));
+                        .catch(err => {
+                            showPopup('Camera access denied: ' + err.message);
+                            takePhotoButton.disabled = false;
+                        });
                 } else {
-                    showPopup('Camera API is not supported in this browser or requires a secure HTTPS connection.', 'error', false);
+                    video.classList.add('hidden');
+                    canvas.classList.remove('hidden');
+                    takePhotoButton.disabled = false;
                 }
+
                 takePhotoButton.onclick = () => {
-                    if (video.videoWidth === 0 || video.videoHeight === 0) { showPopup('Camera not ready yet. Please wait.'); return; }
-                    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                    video.classList.add('hidden'); canvas.classList.remove('hidden');
-                    takePhotoButton.classList.add('hidden'); retakeButton.classList.remove('hidden');
-                    addLabelButton.classList.remove('hidden'); saveButton.classList.add('hidden');
-                    addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
-                    mapLinkOverlay.style.display = 'none';
+                    if (useFallback) {
+                        fallbackInput.click();
+                    } else {
+                        if (video.videoWidth === 0 || video.videoHeight === 0) { showPopup('Camera not ready yet. Please wait.'); return; }
+                        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        video.classList.add('hidden'); canvas.classList.remove('hidden');
+                        takePhotoButton.classList.add('hidden'); retakeButton.classList.remove('hidden');
+                        addLabelButton.classList.remove('hidden'); saveButton.classList.add('hidden');
+                        addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
+                        mapLinkOverlay.style.display = 'none';
+                    }
                 };
+
+                fallbackInput.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const img = new Image();
+                    img.onload = () => {
+                        const maxW = 640;
+                        const scale = img.width > maxW ? maxW / img.width : 1;
+                        canvas.width = img.width * scale;
+                        canvas.height = img.height * scale;
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        takePhotoButton.classList.add('hidden'); retakeButton.classList.remove('hidden');
+                        addLabelButton.classList.remove('hidden'); saveButton.classList.add('hidden');
+                        addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
+                        mapLinkOverlay.style.display = 'none';
+                    };
+                    img.src = URL.createObjectURL(file);
+                };
+
                 retakeButton.onclick = () => {
-                    video.classList.remove('hidden'); canvas.classList.add('hidden');
+                    if (!useFallback) { video.classList.remove('hidden'); canvas.classList.add('hidden'); }
+                    else { ctx.clearRect(0,0,canvas.width,canvas.height); }
                     takePhotoButton.classList.remove('hidden'); retakeButton.classList.add('hidden');
                     addLabelButton.classList.add('hidden'); saveButton.classList.add('hidden');
                     addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
                     mapLinkOverlay.style.display = 'none';
                 };
+
                 addLabelButton.onclick = async () => {
                     addLabelButton.textContent = 'Fetching location...'; addLabelButton.disabled = true;
-                    navigator.geolocation.getCurrentPosition(async pos => {
-                        const lat = pos.coords.latitude, lon = pos.coords.longitude;
+                    
+                    const fetchAndDrawLocation = async (lat, lon) => {
                         try {
                             const res = await fetch(`${API_BASE_URL}/api/get-location?lat=${lat}&lon=${lon}`);
                             const data = await res.json();
@@ -678,7 +722,29 @@ if (document.getElementById('section-list')) {
                             if (mapsUrl) { mapLinkOverlay.href = mapsUrl; mapLinkOverlay.style.display = 'block'; }
                             addLabelButton.textContent = 'Label Added ✅'; saveButton.classList.remove('hidden');
                         } catch (err) { showPopup('Failed to fetch location: ' + err.message); addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false; }
-                    }, err => { showPopup('Location access denied: ' + err.message); addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false; });
+                    };
+
+                    const fallbackIpLocation = async () => {
+                        try {
+                            const ipRes = await fetch('https://freeipapi.com/api/json');
+                            const ipData = await ipRes.json();
+                            if (ipData && ipData.latitude && ipData.longitude) {
+                                await fetchAndDrawLocation(ipData.latitude, ipData.longitude);
+                            } else {
+                                showPopup('Location access denied & IP fallback failed.'); addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
+                            }
+                        } catch(e) { showPopup('Location fallback error: ' + e.message); addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false; }
+                    };
+
+                    if ("geolocation" in navigator) {
+                        navigator.geolocation.getCurrentPosition(async pos => {
+                            await fetchAndDrawLocation(pos.coords.latitude, pos.coords.longitude);
+                        }, async err => {
+                            await fallbackIpLocation();
+                        });
+                    } else {
+                        await fallbackIpLocation();
+                    }
                 };
                 saveButton.onclick = async () => {
                     const token = localStorage.getItem('access_token');
