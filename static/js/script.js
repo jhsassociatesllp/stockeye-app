@@ -807,28 +807,48 @@ if (document.getElementById('section-list')) {
                     };
 
                     const fallbackIpLocation = async () => {
-                        try {
-                            const ipRes = await fetch('https://freeipapi.com/api/json');
-                            const ipData = await ipRes.json();
-                            if (ipData && ipData.latitude && ipData.longitude) {
-                                await fetchAndDrawLocation(ipData.latitude, ipData.longitude);
-                            } else {
-                                showPopup('Location unavailable. You can still save the photo.', 'warning');
-                                addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
-                                saveButton.classList.remove('hidden');
+                        // Try multiple IP geolocation services in order
+                        const services = [
+                            async () => {
+                                const r = await fetch('https://freeipapi.com/api/json', { signal: AbortSignal.timeout(5000) });
+                                const d = await r.json();
+                                if (d && d.latitude && d.longitude) return { lat: d.latitude, lon: d.longitude };
+                                throw new Error('No data');
+                            },
+                            async () => {
+                                const r = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(5000) });
+                                const d = await r.json();
+                                if (d && d.latitude && d.longitude) return { lat: d.latitude, lon: d.longitude };
+                                throw new Error('No data');
+                            },
+                            async () => {
+                                const r = await fetch('https://ip-api.com/json/?fields=lat,lon,status', { signal: AbortSignal.timeout(5000) });
+                                const d = await r.json();
+                                if (d && d.status === 'success') return { lat: d.lat, lon: d.lon };
+                                throw new Error('No data');
                             }
-                        } catch(e) {
-                            showPopup('Location error: ' + e.message);
-                            addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
-                            saveButton.classList.remove('hidden');
+                        ];
+                        for (const service of services) {
+                            try {
+                                const { lat, lon } = await service();
+                                await fetchAndDrawLocation(lat, lon);
+                                return;
+                            } catch(_) {}
                         }
+                        // All failed — still let user save without geotag
+                        showPopup('Could not get location. You can still save the photo.', 'warning');
+                        addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
+                        saveButton.classList.remove('hidden');
                     };
 
-                    if ("geolocation" in navigator) {
+                    // On HTTP (non-secure context), geolocation is blocked by browsers
+                    // Skip it entirely and use IP-based location
+                    const isSecure = window.isSecureContext;
+                    if (isSecure && "geolocation" in navigator) {
                         navigator.geolocation.getCurrentPosition(
                             async pos => { await fetchAndDrawLocation(pos.coords.latitude, pos.coords.longitude); },
                             async () => { await fallbackIpLocation(); },
-                            { timeout: 8000 }
+                            { timeout: 5000 }
                         );
                     } else {
                         await fallbackIpLocation();
