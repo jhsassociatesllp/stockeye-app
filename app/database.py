@@ -14,6 +14,7 @@
 # audit_data_collection = db["audit_data_collection"]
 
 from pymongo import MongoClient
+from gridfs import GridFS
 import os
 from dotenv import load_dotenv
 
@@ -32,3 +33,6 @@ audit_data_collection = db["audit_data_collection"]
 item_master_collection = db["item_master"]
 admins_collection = db["Admins"]
 upload_history_collection = db["upload_history"]
+
+# GridFS for storing photo files
+fs = GridFS(db)

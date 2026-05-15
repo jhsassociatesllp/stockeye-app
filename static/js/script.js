@@ -609,14 +609,18 @@ if (document.getElementById('section-list')) {
                 const sectionForm = document.getElementById('section-form');
                 if (sectionForm) sectionForm.classList.add('hidden');
                 let mapsUrl = "";
+                let photoImageData = null; // base image before geotag overlay
+
                 document.getElementById('photo-section').classList.remove('hidden');
                 document.getElementById('signature-section').classList.add('hidden');
+
                 const video = document.getElementById('video');
                 const canvas = document.getElementById('photo-canvas');
                 const ctx = canvas.getContext('2d');
                 const takePhotoButton = document.getElementById('take-photo');
                 const retakeButton = document.getElementById('retake-photo');
                 const saveButton = document.getElementById('save-photo');
+
                 let addLabelButton = document.getElementById('add-label');
                 if (!addLabelButton) {
                     addLabelButton = document.createElement('button');
@@ -634,94 +638,172 @@ if (document.getElementById('section-list')) {
                     document.getElementById('photo-section').appendChild(mapLinkOverlay);
                 }
                 mapLinkOverlay.style.display = 'none';
-                takePhotoButton.disabled = true;
-                let fallbackInput = document.getElementById('fallback-camera-input');
-                if (!fallbackInput) {
-                    fallbackInput = document.createElement('input');
-                    fallbackInput.type = 'file';
-                    fallbackInput.id = 'fallback-camera-input';
-                    fallbackInput.accept = 'image/*';
-                    fallbackInput.capture = 'environment';
-                    fallbackInput.className = 'hidden';
-                    document.body.appendChild(fallbackInput);
-                }
 
-                const useFallback = !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+                // ── Determine if live camera is available ──
+                const hasLiveCamera = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 
-                if (!useFallback) {
-                    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } })
-                        .then(stream => { video.srcObject = stream; video.onloadedmetadata = () => video.play().then(() => { takePhotoButton.disabled = false; }); })
-                        .catch(err => {
-                            showPopup('Camera access denied: ' + err.message);
-                            takePhotoButton.disabled = false;
-                        });
-                } else {
-                    video.classList.add('hidden');
-                    canvas.classList.remove('hidden');
-                    takePhotoButton.disabled = false;
-                }
+                // ── Hidden file input for HTTP fallback ──
+                let fileInput = document.getElementById('photo-file-input');
+                if (fileInput) fileInput.remove();
+                fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.id = 'photo-file-input';
+                fileInput.accept = 'image/*';
+                fileInput.capture = 'environment';
+                fileInput.style.display = 'none';
+                document.body.appendChild(fileInput);
 
-                takePhotoButton.onclick = () => {
-                    if (useFallback) {
-                        fallbackInput.click();
-                    } else {
-                        if (video.videoWidth === 0 || video.videoHeight === 0) { showPopup('Camera not ready yet. Please wait.'); return; }
-                        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        video.classList.add('hidden'); canvas.classList.remove('hidden');
-                        takePhotoButton.classList.add('hidden'); retakeButton.classList.remove('hidden');
-                        addLabelButton.classList.remove('hidden'); saveButton.classList.add('hidden');
-                        addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
-                        mapLinkOverlay.style.display = 'none';
-                    }
+                const resetToInitial = () => {
+                    photoImageData = null; mapsUrl = '';
+                    mapLinkOverlay.style.display = 'none';
+                    takePhotoButton.classList.remove('hidden');
+                    retakeButton.classList.add('hidden');
+                    addLabelButton.classList.add('hidden');
+                    saveButton.classList.add('hidden');
+                    addLabelButton.textContent = 'Add Location Label';
+                    addLabelButton.disabled = false;
                 };
 
-                fallbackInput.onchange = (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    const img = new Image();
-                    img.onload = () => {
-                        const maxW = 640;
-                        const scale = img.width > maxW ? maxW / img.width : 1;
-                        canvas.width = img.width * scale;
-                        canvas.height = img.height * scale;
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        takePhotoButton.classList.add('hidden'); retakeButton.classList.remove('hidden');
-                        addLabelButton.classList.remove('hidden'); saveButton.classList.add('hidden');
-                        addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
-                        mapLinkOverlay.style.display = 'none';
-                    };
-                    img.src = URL.createObjectURL(file);
-                };
-
-                retakeButton.onclick = () => {
-                    if (!useFallback) { video.classList.remove('hidden'); canvas.classList.add('hidden'); }
-                    else { ctx.clearRect(0,0,canvas.width,canvas.height); }
-                    takePhotoButton.classList.remove('hidden'); retakeButton.classList.add('hidden');
-                    addLabelButton.classList.add('hidden'); saveButton.classList.add('hidden');
-                    addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
+                const showImageOnCanvas = (img) => {
+                    const maxW = 640;
+                    const scale = img.width > maxW ? maxW / img.width : 1;
+                    canvas.width = img.width * scale;
+                    canvas.height = img.height * scale;
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    photoImageData = canvas.toDataURL('image/png');
+                    takePhotoButton.classList.add('hidden');
+                    retakeButton.classList.remove('hidden');
+                    addLabelButton.classList.remove('hidden');
+                    saveButton.classList.add('hidden');
+                    addLabelButton.textContent = 'Add Location Label';
+                    addLabelButton.disabled = false;
                     mapLinkOverlay.style.display = 'none';
                 };
 
+                if (hasLiveCamera) {
+                    // ── LIVE CAMERA MODE ──
+                    video.classList.remove('hidden');
+                    canvas.classList.add('hidden');
+                    takePhotoButton.disabled = true;
+                    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } })
+                        .then(stream => {
+                            video.srcObject = stream;
+                            video.onloadedmetadata = () => video.play().then(() => { takePhotoButton.disabled = false; });
+                        })
+                        .catch(() => {
+                            // Camera permission denied — switch to file mode
+                            video.classList.add('hidden');
+                            canvas.classList.remove('hidden');
+                            takePhotoButton.disabled = false;
+                        });
+
+                    takePhotoButton.onclick = () => {
+                        if (video.videoWidth === 0 || video.videoHeight === 0) {
+                            showPopup('Camera not ready yet. Please wait.'); return;
+                        }
+                        const img = new Image();
+                        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        // Stop stream after snapshot
+                        if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+                        video.classList.add('hidden'); canvas.classList.remove('hidden');
+                        photoImageData = canvas.toDataURL('image/png');
+                        takePhotoButton.classList.add('hidden');
+                        retakeButton.classList.remove('hidden');
+                        addLabelButton.classList.remove('hidden');
+                        saveButton.classList.add('hidden');
+                        addLabelButton.textContent = 'Add Location Label';
+                        addLabelButton.disabled = false;
+                        mapLinkOverlay.style.display = 'none';
+                    };
+
+                    retakeButton.onclick = () => {
+                        if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+                        resetToInitial();
+                        takePhotoButton.disabled = true;
+                        video.classList.remove('hidden'); canvas.classList.add('hidden');
+                        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } })
+                            .then(stream => {
+                                video.srcObject = stream;
+                                video.onloadedmetadata = () => video.play().then(() => { takePhotoButton.disabled = false; });
+                            })
+                            .catch(() => { video.classList.add('hidden'); canvas.classList.remove('hidden'); takePhotoButton.disabled = false; });
+                    };
+                } else {
+                    // ── FILE INPUT FALLBACK (HTTP production) ──
+                    video.classList.add('hidden');
+                    canvas.classList.remove('hidden');
+                    canvas.width = 400; canvas.height = 300;
+                    ctx.fillStyle = '#1f2937'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#9ca3af'; ctx.font = '16px Arial';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText('📷 Tap "Take Photo" to open camera', canvas.width / 2, canvas.height / 2);
+                    takePhotoButton.disabled = false;
+
+                    takePhotoButton.onclick = () => { fileInput.value = ''; fileInput.click(); };
+
+                    retakeButton.onclick = () => {
+                        resetToInitial();
+                        canvas.width = 400; canvas.height = 300;
+                        ctx.fillStyle = '#1f2937'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.fillStyle = '#9ca3af'; ctx.font = '16px Arial';
+                        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        ctx.fillText('📷 Tap "Take Photo" to open camera', canvas.width / 2, canvas.height / 2);
+                    };
+                }
+
+                // ── File input handler (shared — used by fallback and retake) ──
+                fileInput.onchange = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const img = new Image();
+                    img.onload = () => showImageOnCanvas(img);
+                    img.src = URL.createObjectURL(file);
+                };
+
+                // ── Geo-tagging ──
                 addLabelButton.onclick = async () => {
-                    addLabelButton.textContent = 'Fetching location...'; addLabelButton.disabled = true;
-                    
+                    addLabelButton.textContent = 'Fetching location...';
+                    addLabelButton.disabled = true;
+
+                    const drawGeoTag = (lat, lon, address, mUrl) => {
+                        mapsUrl = mUrl;
+                        if (!photoImageData) return;
+                        const base = new Image();
+                        base.onload = () => {
+                            ctx.drawImage(base, 0, 0, canvas.width, canvas.height);
+                            const timestamp = new Date().toLocaleString();
+                            const labelLines = [
+                                `📍 ${parseFloat(lat).toFixed(5)}, ${parseFloat(lon).toFixed(5)}`,
+                                `🏠 ${address}`,
+                                `🌍 ${mUrl || 'Maps URL unavailable'}`,
+                                `🕒 ${timestamp}`
+                            ];
+                            const boxHeight = 110;
+                            ctx.fillStyle = 'rgba(0,0,0,0.65)';
+                            ctx.fillRect(0, canvas.height - boxHeight, canvas.width, boxHeight);
+                            ctx.fillStyle = 'white'; ctx.font = '14px Arial';
+                            ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+                            const startY = canvas.height - boxHeight + 10;
+                            labelLines.forEach((line, i) => {
+                                ctx.fillText(line.length > 70 ? line.slice(0, 67) + '...' : line, 10, startY + i * 23);
+                            });
+                            if (mUrl) { mapLinkOverlay.href = mUrl; mapLinkOverlay.style.display = 'block'; }
+                            addLabelButton.textContent = 'Label Added ✅';
+                            saveButton.classList.remove('hidden');
+                        };
+                        base.src = photoImageData;
+                    };
+
                     const fetchAndDrawLocation = async (lat, lon) => {
                         try {
                             const res = await fetch(`${API_BASE_URL}/api/get-location?lat=${lat}&lon=${lon}`);
                             const data = await res.json();
-                            const address = data.plus_code || 'Address not found';
-                            mapsUrl = data.maps_url || '';
-                            const timestamp = new Date().toLocaleString();
-                            const labelLines = [`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}`, `🏠 ${address}`, `🌍 ${mapsUrl || 'Maps URL unavailable'}`, `🕒 ${timestamp}`];
-                            const boxHeight = 110;
-                            ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, canvas.height - boxHeight, canvas.width, boxHeight);
-                            ctx.fillStyle = 'white'; ctx.font = '16px Arial'; ctx.textBaseline = 'top';
-                            const startY = canvas.height - boxHeight + 10;
-                            labelLines.forEach((line, i) => { const text = line.length > 70 ? line.slice(0, 67) + '...' : line; ctx.fillText(text, 10, startY + i * 22); });
-                            if (mapsUrl) { mapLinkOverlay.href = mapsUrl; mapLinkOverlay.style.display = 'block'; }
-                            addLabelButton.textContent = 'Label Added ✅'; saveButton.classList.remove('hidden');
-                        } catch (err) { showPopup('Failed to fetch location: ' + err.message); addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false; }
+                            drawGeoTag(lat, lon, data.plus_code || 'Address not found', data.maps_url || '');
+                        } catch (err) {
+                            showPopup('Failed to fetch location: ' + err.message);
+                            addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
+                        }
                     };
 
                     const fallbackIpLocation = async () => {
@@ -731,38 +813,43 @@ if (document.getElementById('section-list')) {
                             if (ipData && ipData.latitude && ipData.longitude) {
                                 await fetchAndDrawLocation(ipData.latitude, ipData.longitude);
                             } else {
-                                showPopup('Location access denied & IP fallback failed.'); addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
+                                showPopup('Location unavailable. You can still save the photo.', 'warning');
+                                addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
+                                saveButton.classList.remove('hidden');
                             }
-                        } catch(e) { showPopup('Location fallback error: ' + e.message); addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false; }
+                        } catch(e) {
+                            showPopup('Location error: ' + e.message);
+                            addLabelButton.textContent = 'Add Location Label'; addLabelButton.disabled = false;
+                            saveButton.classList.remove('hidden');
+                        }
                     };
 
                     if ("geolocation" in navigator) {
-                        navigator.geolocation.getCurrentPosition(async pos => {
-                            await fetchAndDrawLocation(pos.coords.latitude, pos.coords.longitude);
-                        }, async err => {
-                            await fallbackIpLocation();
-                        });
+                        navigator.geolocation.getCurrentPosition(
+                            async pos => { await fetchAndDrawLocation(pos.coords.latitude, pos.coords.longitude); },
+                            async () => { await fallbackIpLocation(); },
+                            { timeout: 8000 }
+                        );
                     } else {
                         await fallbackIpLocation();
                     }
                 };
+
+                // ── Save photo ──
                 saveButton.onclick = async () => {
                     const token = localStorage.getItem('access_token');
                     const dataUrl = canvas.toDataURL('image/png');
                     const date = new Date().toISOString().split('T')[0];
                     try {
                         const res = await fetch(`${API_BASE_URL}/api/save-section`, {
-                            method: 'POST', headers: { Authorization: `Bearer ${token}` },
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ section: 'photo', data: { photo: dataUrl, maps_url: mapsUrl }, date }),
                         });
                         const text = await res.text(); const data = JSON.parse(text);
                         if (!res.ok) return showPopup(data.message || 'Failed to save photo');
                         if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
-                        ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        video.classList.remove('hidden'); canvas.classList.add('hidden');
-                        takePhotoButton.classList.remove('hidden'); retakeButton.classList.add('hidden');
-                        addLabelButton.classList.add('hidden'); saveButton.classList.add('hidden');
-                        mapLinkOverlay.style.display = 'none';
+                        resetToInitial();
                         updateSectionTick('photo');
                         showPopup('Photo saved successfully', 'success');
                         document.getElementById('photo-section').classList.add('hidden');

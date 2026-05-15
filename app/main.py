@@ -12,6 +12,7 @@ import logging
 import requests
 from app.auth import *
 from app.database import *
+from app.database import fs
 from app.models import AuditForm, UserLogin, UserRegister
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 import io
@@ -255,6 +256,23 @@ async def save_section(request: Request, emp_id: str = Depends(get_current_user)
                 content={"message": "Missing required fields (section, data, date)", "success": False},
                 status_code=400
             )
+
+        # --- GridFS: extract photo and store separately ---
+        if section == "photo" and "photo" in data and data["photo"].startswith("data:image"):
+            try:
+                header, b64data = data["photo"].split(",", 1)
+                img_bytes = base64.b64decode(b64data)
+                file_id = fs.put(
+                    img_bytes,
+                    filename=f"{emp_id}_{date}_photo.png",
+                    content_type="image/png",
+                    metadata={"user_id": emp_id, "date": date}
+                )
+                data["photo"] = None          # don't store base64 in document
+                data["photo_file_id"] = str(file_id)  # store GridFS reference
+            except Exception as img_err:
+                logger.warning(f"GridFS photo store failed, falling back to base64: {img_err}")
+
         audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": date})
         if not audit:
             audit = {
@@ -282,6 +300,21 @@ async def save_section(request: Request, emp_id: str = Depends(get_current_user)
     except Exception as e:
         logger.error(f"Error in save_section: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/get-photo/{file_id}")
+async def get_photo(file_id: str, emp_id: str = Depends(get_current_user)):
+    """Serve a photo stored in GridFS by its file ID."""
+    try:
+        oid = ObjectId(file_id)
+        if not fs.exists(oid):
+            return JSONResponse({"message": "Photo not found", "success": False}, status_code=404)
+        grid_out = fs.get(oid)
+        data = grid_out.read()
+        return StreamingResponse(io.BytesIO(data), media_type="image/png")
+    except Exception as e:
+        logger.error(f"get_photo error: {e}")
+        return JSONResponse({"message": str(e), "success": False}, status_code=500)
 
 
 @app.post("/api/submit-audit")
