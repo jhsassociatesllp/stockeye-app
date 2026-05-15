@@ -635,9 +635,13 @@ if (document.getElementById('section-list')) {
                 }
                 mapLinkOverlay.style.display = 'none';
                 takePhotoButton.disabled = true;
-                navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } })
-                    .then(stream => { video.srcObject = stream; video.onloadedmetadata = () => video.play().then(() => { takePhotoButton.disabled = false; }); })
-                    .catch(err => showPopup('Camera access denied: ' + err.message));
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } })
+                        .then(stream => { video.srcObject = stream; video.onloadedmetadata = () => video.play().then(() => { takePhotoButton.disabled = false; }); })
+                        .catch(err => showPopup('Camera access denied: ' + err.message));
+                } else {
+                    showPopup('Camera API is not supported in this browser or requires a secure HTTPS connection.', 'error', false);
+                }
                 takePhotoButton.onclick = () => {
                     if (video.videoWidth === 0 || video.videoHeight === 0) { showPopup('Camera not ready yet. Please wait.'); return; }
                     canvas.width = video.videoWidth; canvas.height = video.videoHeight;
