@@ -349,6 +349,36 @@ async def clear_sections(emp_id: str = Depends(get_current_user)):
     except Exception as e:
         return JSONResponse({"message": str(e), "success": False}, status_code=500)
 
+# ═════════════════════════════════════════════════════════════════════════════
+# ADD THIS ENDPOINT TO YOUR main.py (before the existing /api/get-location)
+# ═════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/get-ip-location")
+def get_ip_location():
+    """
+    Fetch user's location via IP address from backend (avoids CORS issues).
+    This solves the CORS problem when geolocation API is not available in production.
+    """
+    services = [
+        ("https://freeipapi.com/api/json", lambda d: {"lat": d.get("latitude"), "lon": d.get("longitude")} if d.get("latitude") else None),
+        ("https://ipapi.co/json/", lambda d: {"lat": d.get("latitude"), "lon": d.get("longitude")} if d.get("latitude") else None),
+        ("https://ip-api.com/json/?fields=lat,lon,status", lambda d: {"lat": d.get("lat"), "lon": d.get("lon")} if d.get("status") == "success" else None),
+    ]
+    
+    for service_url, parse_fn in services:
+        try:
+            res = requests.get(service_url, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                coords = parse_fn(data)
+                if coords and coords["lat"] and coords["lon"]:
+                    logger.info(f"IP geolocation via {service_url}: {coords}")
+                    return {"latitude": coords["lat"], "longitude": coords["lon"], "success": True}
+        except Exception as e:
+            logger.warning(f"IP geolocation service {service_url} failed: {e}")
+    
+    logger.error("All IP geolocation services failed")
+    return {"success": False, "error": "Could not determine IP location"}
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  LOCATION
