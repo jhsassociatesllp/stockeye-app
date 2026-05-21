@@ -13,6 +13,7 @@ import requests
 from app.auth import *
 from app.database import *
 from app.database import fs
+from app.database import fs, warehouse_master_collection
 from app.models import AuditForm, UserLogin, UserRegister
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 import io
@@ -206,7 +207,7 @@ async def get_sections(emp_id: str = Depends(get_current_user)):
             "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
             "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
             "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
-            "stock_count", "signature", "photo"
+            "signature", "photo"
         ]
         completion_status = {
             k: (audit["completion_status"].get(k, False) if audit and "completion_status" in audit else False)
@@ -501,16 +502,33 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
 
     # Photo
     ws = wb.create_sheet("Photo")
-    photo = sections.get("photo", {}).get("photo")
-    maps_url = sections.get("photo", {}).get("maps_url")
+    photo_section = sections.get("photo", {})
+    photo = photo_section.get("photo")
+    photo_file_id = photo_section.get("photo_file_id")
+    maps_url = photo_section.get("maps_url")
     row = 1
     if maps_url:
         ws["A1"] = "Maps URL"; ws["B1"] = maps_url; row += 2
-    if photo:
+
+    # Resolve photo bytes: prefer GridFS, fall back to inline base64
+    photo_bytes = None
+    if photo_file_id:
+        try:
+            from bson import ObjectId as _ObjId
+            grid_out = fs.get(_ObjId(photo_file_id))
+            photo_bytes = grid_out.read()
+        except Exception as gfs_err:
+            logger.warning(f"GridFS photo fetch failed for export: {gfs_err}")
+    elif photo:
         try:
             img_data = re.sub("^data:image/.+;base64,", "", photo)
-            img_bytes = io.BytesIO(base64.b64decode(img_data))
-            img = Image(img_bytes); img.width = 350; img.height = 250
+            photo_bytes = base64.b64decode(img_data)
+        except Exception as b64_err:
+            logger.warning(f"Base64 photo decode failed for export: {b64_err}")
+
+    if photo_bytes:
+        try:
+            img = Image(io.BytesIO(photo_bytes)); img.width = 350; img.height = 250
             ws.add_image(img, f"A{row}")
             ws[f"A{row + 20}"] = "Photo captured during the audit"
         except Exception as e:
@@ -534,7 +552,10 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
 async def export_excel(emp_id: str = Depends(get_current_user)):
     try:
         today = datetime.now(timezone.utc).date().isoformat()
+        # Check temp collection first (audit in progress), then submitted collection
         audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        if not audit_data:
+            audit_data = audit_data_collection.find_one({"user_id": emp_id, "date": today})
         if not audit_data:
             return JSONResponse({"message": "No audit data for today", "success": False}, status_code=404)
         completion = audit_data.get("completion_status", {})
@@ -572,11 +593,15 @@ async def send_email(
 ):
     try:
         today = datetime.now(timezone.utc).date().isoformat()
-        if not attachment.filename.lower().endswith(".pdf"):
-            return JSONResponse({"message": "Only PDF files are allowed", "success": False}, status_code=400)
+        allowed_extensions = (".pdf", ".xlsx", ".xls")
+        if not attachment.filename.lower().endswith(allowed_extensions):
+            return JSONResponse({"message": "Only PDF or Excel files are allowed", "success": False}, status_code=400)
         pdf_bytes = await attachment.read()
         pdf_name = attachment.filename
+        # Check temp collection first (in-progress), then submitted collection
         audit_data = audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        if not audit_data:
+            audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
         if not audit_data:
             return JSONResponse({"message": "No audit data for today", "success": False}, status_code=404)
         completion = audit_data.get("completion_status", {})
@@ -686,9 +711,11 @@ async def upload_items_json(
             "sheets": sheet_summary
         })
 
-        # Replace everything in the collection
-        item_master_collection.delete_many({})
-        item_master_collection.insert_many(all_items)
+        # Replace only the sheets that were uploaded — leave other sheets untouched
+        uploaded_sheet_names = [s.sheet_name.strip() for s in payload.sheets]
+        item_master_collection.delete_many({"sheet_name": {"$in": uploaded_sheet_names}})
+        if all_items:
+            item_master_collection.insert_many(all_items)
 
         logger.info(f"Inserted {len(all_items)} items from {len(payload.sheets)} sheet(s)")
 
@@ -1006,6 +1033,432 @@ async def uploaded_history(emp_id: str = Depends(get_current_user)):
         }, status_code=200)
     except Exception as e:
         logger.error(f"Upload history error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  AUDIT COMPLETION DASHBOARD
+# ─────────────────────────────────────────────────────────────────────────────
+
+CHECKLIST_SECTIONS = [
+    "general_report", "stock_reconciliation",
+    "observations_on_stacking", "observations_on_warehouse_operations",
+    "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
+    "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
+    "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
+    "signature", "photo"
+]
+
+@app.get("/api/admin/audit-dashboard")
+async def audit_dashboard(emp_id: str = Depends(get_current_user)):
+    try:
+        if not admins_collection.find_one({"email": emp_id}):
+            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
+
+        # Submitted audits
+        submitted = list(audit_data_collection.find({}, {"_id": 0, "user_id": 1, "date": 1,
+                                                          "completion_status": 1, "stock_count_data": 1,
+                                                          "submitted_at": 1, "sections": 1}))
+        # In-progress audits
+        in_progress = list(temp_audit_data_collection.find({}, {"_id": 0, "user_id": 1, "date": 1,
+                                                                  "completion_status": 1, "stock_count_data": 1, "sections": 1}))
+
+        def build_row(d, is_submitted):
+            cs = d.get("completion_status", {})
+            checklist_done = sum(1 for s in CHECKLIST_SECTIONS if cs.get(s, False))
+            checklist_total = len(CHECKLIST_SECTIONS)
+            
+            # Checklist status logic
+            if is_submitted:
+                checklist_status = "Submitted"
+            elif checklist_done == 0:
+                checklist_status = "Pending"
+            else:
+                checklist_status = "In Progress"
+            
+            # Stock count
+            sc_items = len(d.get("stock_count_data", []))
+            sc_submitted = cs.get("stock_count", False)
+            sc_status = "Submitted" if sc_submitted else "In Progress"
+            
+            wh_name = (d.get("sections") or {}).get("general_report", {}).get("warehouse_name", "—")
+            submitted_at = d.get("submitted_at", "")
+            if isinstance(submitted_at, datetime):
+                submitted_at = submitted_at.isoformat()
+            return {
+                "user_id": d.get("user_id", ""),
+                "date": d.get("date", ""),
+                "warehouse_name": wh_name,
+                "checklist_completed": checklist_done,
+                "checklist_total": checklist_total,
+                "checklist_pct": round(checklist_done / checklist_total * 100) if checklist_total > 0 else 0,
+                "checklist_status": checklist_status,
+                "stock_count_items": sc_items,
+                "stock_count_submitted": sc_submitted,
+                "stock_count_status": sc_status,
+                "submitted_at": submitted_at,
+            }
+
+        rows = [build_row(d, True) for d in submitted]
+        rows += [build_row(d, False) for d in in_progress]
+        rows.sort(key=lambda r: (r["date"], r["user_id"]), reverse=True)
+
+        return JSONResponse({"message": "Dashboard data fetched", "success": True,
+                             "data": {"rows": rows, "checklist_sections": CHECKLIST_SECTIONS}}, status_code=200)
+    except Exception as e:
+        logger.error(f"Audit dashboard error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  WAREHOUSE MASTER
+# ─────────────────────────────────────────────────────────────────────────────
+
+class WarehouseItem(BaseModel):
+    warehouse_name: str
+    warehouse_address: str
+
+class WarehouseMasterPayload(BaseModel):
+    warehouses: List[WarehouseItem]
+
+@app.post("/api/admin/warehouse-master")
+async def upload_warehouse_master(payload: WarehouseMasterPayload, emp_id: str = Depends(get_current_user)):
+    try:
+        if not admins_collection.find_one({"email": emp_id}):
+            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
+        if not payload.warehouses:
+            return JSONResponse({"message": "No warehouse data provided", "success": False}, status_code=400)
+        docs = [{"warehouse_name": w.warehouse_name.strip(),
+                 "warehouse_address": w.warehouse_address.strip(),
+                 "uploaded_by": emp_id,
+                 "uploaded_at": datetime.now(timezone.utc)} for w in payload.warehouses
+                if w.warehouse_name.strip()]
+        warehouse_master_collection.delete_many({})
+        warehouse_master_collection.insert_many(docs)
+        return JSONResponse({"message": f"{len(docs)} warehouses uploaded successfully",
+                             "success": True, "data": {"count": len(docs)}}, status_code=200)
+    except Exception as e:
+        logger.error(f"Warehouse master upload error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+@app.get("/api/admin/warehouse-master")
+async def get_warehouse_master_admin(emp_id: str = Depends(get_current_user)):
+    try:
+        if not admins_collection.find_one({"email": emp_id}):
+            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
+        warehouses = list(warehouse_master_collection.find({}, {"_id": 0, "warehouse_name": 1, "warehouse_address": 1}))
+        return JSONResponse({"message": "Warehouses fetched", "success": True,
+                             "data": {"warehouses": warehouses}}, status_code=200)
+    except Exception as e:
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+@app.get("/api/warehouses")
+async def get_warehouses(emp_id: str = Depends(get_current_user)):
+    """Public endpoint for users to fetch warehouse list for the dropdown."""
+    try:
+        warehouses = list(warehouse_master_collection.find({}, {"_id": 0, "warehouse_name": 1, "warehouse_address": 1}))
+        return JSONResponse({"message": "Warehouses fetched", "success": True,
+                             "data": {"warehouses": warehouses}}, status_code=200)
+    except Exception as e:
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+@app.get("/api/admin/analytics")
+async def admin_analytics(start_date: str = None, end_date: str = None, emp_id: str = Depends(get_current_user)):
+    """Analytics endpoint for admin dashboard with interactive graphs."""
+    try:
+        if not admins_collection.find_one({"email": emp_id}):
+            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
+        
+        from datetime import datetime, timedelta
+        from collections import defaultdict
+        
+        # Parse date range
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        if not end_date:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Fetch all audits in date range (both temp and submitted)
+        query = {"date": {"$gte": start_date, "$lte": end_date}}
+        temp_audits = list(temp_audit_data_collection.find(query))
+        submitted_audits = list(audit_data_collection.find(query))
+        all_audits = temp_audits + submitted_audits
+        
+        # Calculate metrics
+        total_audits = len(all_audits)
+        completed_audits = len([a for a in all_audits if a.get("submitted_at")])
+        completion_rate = round((completed_audits / total_audits * 100) if total_audits > 0 else 0, 1)
+        
+        # Average sections completed
+        total_sections = 0
+        for audit in all_audits:
+            comp_status = audit.get("completion_status", {})
+            total_sections += sum(1 for v in comp_status.values() if v)
+        avg_sections = total_sections / total_audits if total_audits > 0 else 0
+        
+        # Total stock items counted
+        total_stock_items = sum(len(a.get("stock_count_data", [])) for a in all_audits)
+        
+        # Audits by date (timeline)
+        audits_by_date = defaultdict(int)
+        for audit in all_audits:
+            audits_by_date[audit.get("date", "Unknown")] += 1
+        audits_timeline = [{"date": k, "count": v} for k, v in sorted(audits_by_date.items())]
+        
+        # Completion by user
+        user_stats = defaultdict(lambda: {"total": 0, "completed": 0})
+        for audit in all_audits:
+            user = audit.get("user_id", "Unknown")
+            user_stats[user]["total"] += 1
+            if audit.get("submitted_at"):
+                user_stats[user]["completed"] += 1
+        completion_by_user = [{"user": k, "total": v["total"], "completed": v["completed"]} 
+                               for k, v in user_stats.items()]
+        
+        # Warehouse distribution
+        warehouse_dist = defaultdict(int)
+        for audit in all_audits:
+            wh = audit.get("warehouse_name") or audit.get("general_report", {}).get("warehouse_name", "Unknown")
+            warehouse_dist[wh] += 1
+        warehouse_distribution = [{"warehouse": k, "count": v} for k, v in warehouse_dist.items()]
+        
+        # Section breakdown (completed, in progress, pending)
+        section_stats = {"completed": 0, "in_progress": 0, "pending": 0}
+        for audit in all_audits:
+            comp_status = audit.get("completion_status", {})
+            completed_count = sum(1 for v in comp_status.values() if v)
+            total_count = len(comp_status)
+            
+            if completed_count == total_count and completed_count > 0:
+                section_stats["completed"] += 1
+            elif completed_count > 0:
+                section_stats["in_progress"] += 1
+            else:
+                section_stats["pending"] += 1
+        
+        return JSONResponse({
+            "message": "Analytics data fetched",
+            "success": True,
+            "data": {
+                "total_audits": total_audits,
+                "completion_rate": completion_rate,
+                "avg_sections": avg_sections,
+                "total_stock_items": total_stock_items,
+                "audits_by_date": audits_timeline,
+                "completion_by_user": completion_by_user,
+                "warehouse_distribution": warehouse_distribution,
+                "section_breakdown": section_stats
+            }
+        }, status_code=200)
+    except Exception as e:
+        logger.error(f"Analytics error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+@app.get("/api/admin/warehouse-status")
+async def admin_warehouse_status(date: str = None, emp_id: str = Depends(get_current_user)):
+    """Get audit status for each warehouse - shows which warehouses have completed audits, in progress, or not started."""
+    try:
+        if not admins_collection.find_one({"email": emp_id}):
+            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
+        
+        from datetime import datetime
+        
+        # Use today's date if not provided
+        if not date:
+            date = datetime.now().strftime("%Y-%m-%d")
+        
+        # Get all warehouses from warehouse master
+        all_warehouses = list(warehouse_master_collection.find({}, {"_id": 0, "warehouse_name": 1, "warehouse_address": 1}))
+        
+        # Get audits for the specified date (both temp and submitted)
+        temp_audits = list(temp_audit_data_collection.find({"date": date}))
+        submitted_audits = list(audit_data_collection.find({"date": date}))
+        all_audits = temp_audits + submitted_audits
+        
+        # Build warehouse status map
+        warehouse_status_map = {}
+        
+        for audit in all_audits:
+            wh_name = audit.get("warehouse_name") or audit.get("general_report", {}).get("warehouse_name")
+            if not wh_name:
+                continue
+            
+            # If warehouse not in map yet, initialize it
+            if wh_name not in warehouse_status_map:
+                warehouse_status_map[wh_name] = {
+                    "warehouse_name": wh_name,
+                    "warehouse_address": "",
+                    "status": "Not Started",
+                    "assigned_users": [],
+                    "progress_percentage": 0,
+                    "last_updated": None,
+                    "audit_id": None
+                }
+            
+            # Update status based on audit
+            user_id = audit.get("user_id")
+            if user_id and user_id not in warehouse_status_map[wh_name]["assigned_users"]:
+                warehouse_status_map[wh_name]["assigned_users"].append(user_id)
+            
+            # Calculate progress
+            comp_status = audit.get("completion_status", {})
+            if comp_status:
+                completed = sum(1 for v in comp_status.values() if v)
+                total = len(comp_status)
+                progress = round((completed / total * 100) if total > 0 else 0)
+                
+                # Update if this audit has better progress
+                if progress > warehouse_status_map[wh_name]["progress_percentage"]:
+                    warehouse_status_map[wh_name]["progress_percentage"] = progress
+                    warehouse_status_map[wh_name]["audit_id"] = str(audit.get("_id", ""))
+                
+                # Determine status
+                if audit.get("submitted_at"):
+                    warehouse_status_map[wh_name]["status"] = "Completed"
+                elif completed > 0:
+                    if warehouse_status_map[wh_name]["status"] != "Completed":
+                        warehouse_status_map[wh_name]["status"] = "In Progress"
+            
+            # Update last_updated
+            updated_at = audit.get("submitted_at") or audit.get("date")
+            if updated_at:
+                if not warehouse_status_map[wh_name]["last_updated"] or updated_at > warehouse_status_map[wh_name]["last_updated"]:
+                    warehouse_status_map[wh_name]["last_updated"] = updated_at
+        
+        # Add warehouses from master that don't have audits
+        for wh in all_warehouses:
+            wh_name = wh.get("warehouse_name")
+            if wh_name not in warehouse_status_map:
+                warehouse_status_map[wh_name] = {
+                    "warehouse_name": wh_name,
+                    "warehouse_address": wh.get("warehouse_address", ""),
+                    "status": "Not Started",
+                    "assigned_users": [],
+                    "progress_percentage": 0,
+                    "last_updated": None,
+                    "audit_id": None
+                }
+            else:
+                # Update address from master
+                warehouse_status_map[wh_name]["warehouse_address"] = wh.get("warehouse_address", "")
+        
+        # Convert to list and sort by status priority (Completed, In Progress, Not Started)
+        status_priority = {"Completed": 1, "In Progress": 2, "Not Started": 3}
+        warehouse_list = sorted(
+            warehouse_status_map.values(),
+            key=lambda x: (status_priority.get(x["status"], 4), x["warehouse_name"])
+        )
+        
+        return JSONResponse({
+            "message": "Warehouse status fetched",
+            "success": True,
+            "data": {
+                "warehouses": warehouse_list,
+                "date": date
+            }
+        }, status_code=200)
+    except Exception as e:
+        logger.error(f"Warehouse status error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  USER DASHBOARD HISTORY
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/user/checklist-history")
+async def user_checklist_history(emp_id: str = Depends(get_current_user)):
+    """Get all submitted checklists for the current user."""
+    try:
+        history = list(audit_data_collection.find(
+            {"user_id": emp_id},
+            {"_id": 0, "date": 1, "submitted_at": 1, "sections": 1, "completion_status": 1}
+        ).sort("date", -1))
+        
+        for h in history:
+            if "submitted_at" in h and isinstance(h["submitted_at"], datetime):
+                h["submitted_at"] = h["submitted_at"].isoformat()
+            wh_name = (h.get("sections") or {}).get("general_report", {}).get("warehouse_name", "—")
+            h["warehouse_name"] = wh_name
+            cs = h.get("completion_status", {})
+            h["sections_completed"] = sum(1 for s in CHECKLIST_SECTIONS if cs.get(s, False))
+            h["sections_total"] = len(CHECKLIST_SECTIONS)
+        
+        return JSONResponse({"message": "History fetched", "success": True,
+                             "data": {"history": history}}, status_code=200)
+    except Exception as e:
+        logger.error(f"Checklist history error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+
+@app.get("/api/user/stock-count-history")
+async def user_stock_count_history(emp_id: str = Depends(get_current_user)):
+    """Get all stock count records (pending, completed, history) for the current user."""
+    try:
+        today = datetime.now(timezone.utc).date().isoformat()
+        
+        # Current in-progress (temp collection)
+        current_temp = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        pending_items = []
+        if current_temp:
+            wh_name = (current_temp.get("sections") or {}).get("general_report", {}).get("warehouse_name", "—")
+            sc_data = current_temp.get("stock_count_data", [])
+            pending_items = [{
+                "date": current_temp.get("date"),
+                "warehouse_name": wh_name,
+                "items_count": len(sc_data),
+                "status": "Pending",
+                "stock_count_data": sc_data
+            }]
+        
+        # Completed (submitted today - in audit_data_collection)
+        completed_today = audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        completed_items = []
+        if completed_today:
+            wh_name = (completed_today.get("sections") or {}).get("general_report", {}).get("warehouse_name", "—")
+            sc_data = completed_today.get("stock_count_data", [])
+            submitted_at = completed_today.get("submitted_at", "")
+            if isinstance(submitted_at, datetime):
+                submitted_at = submitted_at.isoformat()
+            completed_items = [{
+                "date": completed_today.get("date"),
+                "warehouse_name": wh_name,
+                "items_count": len(sc_data),
+                "status": "Completed",
+                "submitted_at": submitted_at,
+                "stock_count_data": sc_data
+            }]
+        
+        # History (all past submitted audits)
+        history = list(audit_data_collection.find(
+            {"user_id": emp_id},
+            {"_id": 0, "date": 1, "submitted_at": 1, "sections": 1, "stock_count_data": 1}
+        ).sort("date", -1))
+        
+        history_items = []
+        for h in history:
+            wh_name = (h.get("sections") or {}).get("general_report", {}).get("warehouse_name", "—")
+            sc_data = h.get("stock_count_data", [])
+            submitted_at = h.get("submitted_at", "")
+            if isinstance(submitted_at, datetime):
+                submitted_at = submitted_at.isoformat()
+            history_items.append({
+                "date": h.get("date"),
+                "warehouse_name": wh_name,
+                "items_count": len(sc_data),
+                "status": "Submitted",
+                "submitted_at": submitted_at,
+                "stock_count_data": sc_data
+            })
+        
+        return JSONResponse({"message": "Stock count data fetched", "success": True,
+                             "data": {
+                                 "pending": pending_items,
+                                 "completed": completed_items,
+                                 "history": history_items
+                             }}, status_code=200)
+    except Exception as e:
+        logger.error(f"Stock count history error: {e}")
         return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
 
 # ─────────────────────────────────────────────────────────────────────────────

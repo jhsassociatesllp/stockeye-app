@@ -17,6 +17,68 @@ document.addEventListener("DOMContentLoaded", () => {
     const signatureSection = document.getElementById("signature-section");
     if (photoSection) photoSection.classList.add("hidden");
     if (signatureSection) signatureSection.classList.add("hidden");
+
+    // ── Checklist Tab Switching ──
+    const checklistTabCurrent = document.getElementById('checklist-tab-current');
+    const checklistTabHistory = document.getElementById('checklist-tab-history');
+    const checklistCurrentContent = document.getElementById('checklist-current-content');
+    const checklistHistoryContent = document.getElementById('checklist-history-content');
+
+    if (checklistTabCurrent && checklistTabHistory) {
+        checklistTabCurrent.addEventListener('click', () => {
+            checklistTabCurrent.className = 'px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm';
+            checklistTabHistory.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
+            checklistCurrentContent.classList.remove('hidden');
+            checklistHistoryContent.classList.add('hidden');
+        });
+
+        checklistTabHistory.addEventListener('click', () => {
+            checklistTabHistory.className = 'px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm';
+            checklistTabCurrent.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
+            checklistHistoryContent.classList.remove('hidden');
+            checklistCurrentContent.classList.add('hidden');
+            loadChecklistHistory();
+        });
+    }
+
+    // ── Stock Count Tab Switching ──
+    const scTabPending = document.getElementById('sc-tab-pending');
+    const scTabCompleted = document.getElementById('sc-tab-completed');
+    const scTabHistory = document.getElementById('sc-tab-history');
+    const scPendingContent = document.getElementById('sc-pending-content');
+    const scCompletedContent = document.getElementById('sc-completed-content');
+    const scHistoryContent = document.getElementById('sc-history-content');
+
+    if (scTabPending && scTabCompleted && scTabHistory) {
+        scTabPending.addEventListener('click', () => {
+            scTabPending.className = 'px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm';
+            scTabCompleted.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
+            scTabHistory.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
+            scPendingContent.classList.remove('hidden');
+            scCompletedContent.classList.add('hidden');
+            scHistoryContent.classList.add('hidden');
+        });
+
+        scTabCompleted.addEventListener('click', () => {
+            scTabCompleted.className = 'px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm';
+            scTabPending.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
+            scTabHistory.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
+            scCompletedContent.classList.remove('hidden');
+            scPendingContent.classList.add('hidden');
+            scHistoryContent.classList.add('hidden');
+            loadStockCountHistory('completed');
+        });
+
+        scTabHistory.addEventListener('click', () => {
+            scTabHistory.className = 'px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm';
+            scTabPending.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
+            scTabCompleted.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
+            scHistoryContent.classList.remove('hidden');
+            scPendingContent.classList.add('hidden');
+            scCompletedContent.classList.add('hidden');
+            loadStockCountHistory('history');
+        });
+    }
 });
 
 function getUserRole(email) {
@@ -61,7 +123,7 @@ function updateSectionTick(section) {
 }
 
 function updateButtons() {
-    const sectionList = document.getElementById('section-list');
+    const checklistContainer = document.getElementById('checklist-container');
     const sectionContent = document.getElementById('section-content');
     const sendEmailSection = document.getElementById('send-email-section');
     const stockCountSection = document.getElementById('stock-count-section');
@@ -70,7 +132,7 @@ function updateButtons() {
     const exportBtn = document.getElementById('export-excel');
 
     const isDashboardVisible =
-        sectionList && !sectionList.classList.contains('hidden') &&
+        checklistContainer && !checklistContainer.classList.contains('hidden') &&
         sectionContent && sectionContent.classList.contains('hidden') &&
         (!sendEmailSection || sendEmailSection.classList.contains('hidden')) &&
         (!stockCountSection || stockCountSection.classList.contains('hidden')) &&
@@ -176,7 +238,7 @@ const backToDashboardButton = document.getElementById('back-to-dashboard');
 if (backToDashboardButton) {
     backToDashboardButton.onclick = () => {
         document.getElementById('section-content')?.classList.add('hidden');
-        document.getElementById('section-list')?.classList.remove('hidden');
+        document.getElementById('checklist-container')?.classList.remove('hidden');
         document.getElementById('photo-section').classList.add('hidden');
         document.getElementById('signature-section').classList.add('hidden');
         document.getElementById('send-email-section').classList.add('hidden');
@@ -188,8 +250,6 @@ if (backToDashboardButton) {
             video.srcObject = null;
         }
         if (typeof window.loadDashboard === 'function') window.loadDashboard();
-        document.getElementById('submit-audit')?.classList.remove('hidden');
-        document.getElementById('export-excel')?.classList.remove('hidden');
         toggleSubmitButton();
     };
 }
@@ -398,35 +458,177 @@ if (document.getElementById('section-list')) {
                     <div class="mb-4"><label for="time_in" class="block text-gray-800 font-medium mb-2">Time In <span class="mandatory-star">*</span></label><input type="time" id="time_in" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required></div>
                     <div class="mb-4"><label for="time_out" class="block text-gray-800 font-medium mb-2">Time Out <span class="mandatory-star">*</span></label><input type="time" id="time_out" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required></div>
                     <div class="mb-4"><label for="working_hours" class="block text-gray-800 font-medium mb-2">Working Hours <span class="mandatory-star">*</span></label><input type="text" id="working_hours" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" readonly></div>
-                    <div class="mb-4"><label for="warehouse_address" class="block text-gray-800 font-medium mb-2">Warehouse Address <span class="mandatory-star">*</span></label><textarea id="warehouse_address" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required></textarea></div>
-                    <div class="mb-4"><label for="warehouse_name" class="block text-gray-800 font-medium mb-2">Warehouse Name <span class="mandatory-star">*</span></label><input type="text" id="warehouse_name" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required></div>
+                    <div class="mb-4">
+                        <label for="warehouse_name" class="block text-gray-800 font-medium mb-2">Warehouse Name <span class="mandatory-star">*</span></label>
+                        <select id="warehouse_name" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required>
+                            <option value="">-- Loading warehouses… --</option>
+                        </select>
+                    </div>
+                    <div class="mb-4"><label for="warehouse_address" class="block text-gray-800 font-medium mb-2">Warehouse Address <span class="mandatory-star">*</span></label><textarea id="warehouse_address" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" rows="2" required></textarea></div>
                     <div class="mb-4"><label for="auditor_name" class="block text-gray-800 font-medium mb-2">Auditor Name <span class="mandatory-star">*</span></label><input type="text" id="auditor_name" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required></div>
                     <div class="mb-4"><label for="warehouse_manager_name" class="block text-gray-800 font-medium mb-2">Warehouse Manager <span class="mandatory-star">*</span></label><input type="text" id="warehouse_manager_name" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required></div>
-                    <div class="mb-4"><label for="previous_audit_date" class="block text-gray-800 font-medium mb-2">Previous Audit Date <span class="mandatory-star">*</span></label><input type="date" id="previous_audit_date" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required></div>
-                    <div class="mb-4"><label for="previous_auditor_name" class="block text-gray-800 font-medium mb-2">Previous Auditor <span class="mandatory-star">*</span></label><input type="text" id="previous_auditor_name" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required></div>
-                    <div class="mb-4"><label for="previous_auditor_type" class="block text-gray-800 font-medium mb-2">Previous Auditor Type <span class="mandatory-star">*</span></label><select id="previous_auditor_type" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required><option value="MCXCCL">MCXCCL</option><option value="WSP">WSP</option><option value="External">External</option></select></div>
-                    <div id="agency_name_container" class="mb-4" style="display: none;"><label for="agency_name" class="block text-gray-800 font-medium mb-2">Agency Name <span class="mandatory-star">*</span></label><input type="text" id="agency_name" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"></div>
-                    <div class="mb-4"><label for="warehouse_capacity" class="block text-gray-800 font-medium mb-2">Warehouse Capacity <span class="mandatory-star">*</span></label><input type="number" id="warehouse_capacity" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required min="0"></div>
+
+                    <!-- Previous Audit Records (multiple) -->
+                    <div class="mb-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="block text-gray-800 font-medium">Previous Audit Records <span class="mandatory-star">*</span></label>
+                            <button type="button" id="add-prev-audit" class="text-sm bg-indigo-100 text-indigo-700 px-3 py-1 rounded-lg hover:bg-indigo-200 font-medium">+ Add Record</button>
+                        </div>
+                        <div id="prev-audit-list" class="space-y-3"></div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="warehouse_capacity" class="block text-gray-800 font-medium mb-2">Warehouse Capacity <span class="mandatory-star">*</span></label>
+                        <div class="flex gap-2">
+                            <input type="number" id="warehouse_capacity" class="flex-1 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required min="0" placeholder="Enter capacity">
+                            <select id="warehouse_capacity_uom" class="w-28 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                                <option value="MT">MT</option>
+                                <option value="KG">KG</option>
+                                <option value="Bales">Bales</option>
+                                <option value="Bags">Bags</option>
+                                <option value="Drums">Drums</option>
+                                <option value="Bundles">Bundles</option>
+                                <option value="Bars">Bars</option>
+                                <option value="Nos">Nos</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class="mb-4"><label for="capacity_utilization" class="block text-gray-800 font-medium mb-2">Capacity Utilization (%) <span class="mandatory-star">*</span></label><input type="number" id="capacity_utilization" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" required min="0" max="100" step="0.01"></div>
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
                 `;
+
+                // ── Previous Audit Records helpers ──────────────────────────
+                const prevAuditList = document.getElementById('prev-audit-list');
+
+                function createPrevAuditRow(rowData = {}) {
+                    const idx = prevAuditList.children.length + 1;
+                    const row = document.createElement('div');
+                    row.className = 'prev-audit-row border border-gray-200 rounded-lg p-3 bg-gray-50 relative';
+                    row.innerHTML = `
+                        <div class="grid grid-cols-1 gap-2">
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-sm text-gray-600 mb-1">Date <span class="mandatory-star">*</span></label>
+                                    <input type="date" class="prev-audit-date w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400">
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-gray-600 mb-1">Auditor Name <span class="mandatory-star">*</span></label>
+                                    <input type="text" class="prev-auditor-name w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400" placeholder="Auditor name">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-sm text-gray-600 mb-1">Auditor Type <span class="mandatory-star">*</span></label>
+                                    <select class="prev-auditor-type w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400">
+                                        <option value="MCXCCL">MCXCCL</option>
+                                        <option value="WSP">WSP</option>
+                                        <option value="External">External</option>
+                                    </select>
+                                </div>
+                                <div class="prev-agency-container" style="display:none;">
+                                    <label class="block text-sm text-gray-600 mb-1">Agency Name <span class="mandatory-star">*</span></label>
+                                    <input type="text" class="prev-agency-name w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400" placeholder="Agency name">
+                                </div>
+                            </div>
+                        </div>
+                        ${idx > 1 ? '<button type="button" class="remove-prev-audit absolute top-2 right-2 text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>' : ''}
+                    `;
+                    prevAuditList.appendChild(row);
+
+                    // Show/hide agency field based on type
+                    const typeSelect = row.querySelector('.prev-auditor-type');
+                    const agencyContainer = row.querySelector('.prev-agency-container');
+                    typeSelect.addEventListener('change', () => {
+                        agencyContainer.style.display = typeSelect.value === 'External' ? 'block' : 'none';
+                    });
+
+                    // Remove row
+                    row.querySelector('.remove-prev-audit')?.addEventListener('click', () => {
+                        row.remove();
+                    });
+
+                    // Populate saved data
+                    if (rowData.date) row.querySelector('.prev-audit-date').value = rowData.date;
+                    if (rowData.auditor_name) row.querySelector('.prev-auditor-name').value = rowData.auditor_name;
+                    if (rowData.auditor_type) {
+                        typeSelect.value = rowData.auditor_type;
+                        typeSelect.dispatchEvent(new Event('change'));
+                    }
+                    if (rowData.agency_name) row.querySelector('.prev-agency-name').value = rowData.agency_name;
+                }
+
+                document.getElementById('add-prev-audit').addEventListener('click', () => createPrevAuditRow());
+
+                // Restore saved previous audit records or create one blank row
+                const savedPrevAudits = Array.isArray(sectionData.previous_audits) ? sectionData.previous_audits : [];
+                if (savedPrevAudits.length > 0) {
+                    savedPrevAudits.forEach(r => createPrevAuditRow(r));
+                } else {
+                    // Migrate legacy single-record fields if present
+                    createPrevAuditRow({
+                        date: sectionData.previous_audit_date || '',
+                        auditor_name: sectionData.previous_auditor_name || '',
+                        auditor_type: sectionData.previous_auditor_type || 'MCXCCL',
+                        agency_name: sectionData.agency_name || ''
+                    });
+                }
+
+                // ── Populate other fields ───────────────────────────────────
                 document.getElementById('audit_date').value = sectionData.audit_date || '';
                 document.getElementById('delivery_centre').value = sectionData.delivery_centre || '';
                 document.getElementById('time_in').value = sectionData.time_in || '';
                 document.getElementById('time_out').value = sectionData.time_out || '';
                 document.getElementById('working_hours').value = sectionData.working_hours || '';
-                document.getElementById('warehouse_address').value = sectionData.warehouse_address || '';
-                document.getElementById('warehouse_name').value = sectionData.warehouse_name || '';
                 document.getElementById('auditor_name').value = sectionData.auditor_name || '';
                 document.getElementById('warehouse_manager_name').value = sectionData.warehouse_manager_name || '';
-                document.getElementById('previous_audit_date').value = sectionData.previous_audit_date || '';
-                document.getElementById('previous_auditor_name').value = sectionData.previous_auditor_name || '';
-                document.getElementById('previous_auditor_type').value = sectionData.previous_auditor_type || '';
-                document.getElementById('agency_name').value = sectionData.agency_name || '';
                 document.getElementById('warehouse_capacity').value = sectionData.warehouse_capacity || '';
+                document.getElementById('warehouse_capacity_uom').value = sectionData.warehouse_capacity_uom || 'MT';
                 document.getElementById('capacity_utilization').value = sectionData.capacity_utilization || '';
+
+                // ── Load warehouse dropdown ─────────────────────────────────
+                (async () => {
+                    const whSelect = document.getElementById('warehouse_name');
+                    const whAddress = document.getElementById('warehouse_address');
+                    let warehouseList = [];
+                    try {
+                        const whRes = await fetch(`${API_BASE_URL}/api/warehouses`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const whData = await whRes.json();
+                        warehouseList = whData.data?.warehouses || [];
+                    } catch { }
+
+                    if (warehouseList.length > 0) {
+                        whSelect.innerHTML = '<option value="">-- Select Warehouse --</option>' +
+                            warehouseList.map(w => `<option value="${w.warehouse_name}" data-address="${w.warehouse_address || ''}">${w.warehouse_name}</option>`).join('');
+                        // Restore saved value
+                        if (sectionData.warehouse_name) {
+                            whSelect.value = sectionData.warehouse_name;
+                            // If saved name not in list, add it as a custom option
+                            if (!whSelect.value) {
+                                const opt = document.createElement('option');
+                                opt.value = sectionData.warehouse_name;
+                                opt.textContent = sectionData.warehouse_name;
+                                opt.dataset.address = sectionData.warehouse_address || '';
+                                whSelect.appendChild(opt);
+                                whSelect.value = sectionData.warehouse_name;
+                            }
+                        }
+                        whAddress.value = sectionData.warehouse_address || whSelect.selectedOptions[0]?.dataset.address || '';
+                        // Auto-fill address on selection
+                        whSelect.addEventListener('change', () => {
+                            const addr = whSelect.selectedOptions[0]?.dataset.address || '';
+                            whAddress.value = addr;
+                        });
+                    } else {
+                        // No warehouse master — fall back to free text
+                        whSelect.outerHTML = `<input type="text" id="warehouse_name" class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500" value="${sectionData.warehouse_name || ''}" required>`;
+                        whAddress.value = sectionData.warehouse_address || '';
+                    }
+                })();
+
                 if (sectionData.time_in && sectionData.time_out) document.getElementById('time_out').dispatchEvent(new Event('change'));
-                document.getElementById('previous_auditor_type').dispatchEvent(new Event('change'));
+
                 const timeIn = document.getElementById('time_in');
                 const timeOut = document.getElementById('time_out');
                 const workingHours = document.getElementById('working_hours');
@@ -441,10 +643,6 @@ if (document.getElementById('section-list')) {
                             workingHours.value = `${hours}h ${minutes}m`;
                         }
                     }
-                });
-                document.getElementById('previous_auditor_type').addEventListener('change', () => {
-                    document.getElementById('agency_name_container').style.display =
-                        document.getElementById('previous_auditor_type').value === 'External' ? 'block' : 'none';
                 });
             } else if (section === 'stock_reconciliation') {
                 form.innerHTML = `
@@ -559,6 +757,16 @@ if (document.getElementById('section-list')) {
                         document.getElementById(`remarks${i}`).value = qd.remarks || '';
                     });
                 }
+
+                // Clear red flag when user answers a question
+                form.querySelectorAll('input[type="radio"]').forEach(radio => {
+                    radio.addEventListener('change', () => {
+                        const questionDiv = radio.closest('.mb-4');
+                        if (questionDiv) {
+                            questionDiv.classList.remove('border', 'border-red-500', 'bg-red-50', 'rounded-lg', 'p-2');
+                        }
+                    });
+                });
             } else if (section === 'signature') {
                 const sectionForm = document.getElementById('section-form');
                 if (sectionForm) sectionForm.classList.add('hidden');
@@ -896,15 +1104,32 @@ if (document.getElementById('section-list')) {
         let validationErrors = [];
 
         if (section === 'general_report') {
-            const fields = ['audit_date', 'delivery_centre', 'time_in', 'time_out', 'working_hours', 'warehouse_address', 'warehouse_name', 'auditor_name', 'warehouse_manager_name', 'previous_audit_date', 'previous_auditor_name', 'previous_auditor_type', 'warehouse_capacity', 'capacity_utilization'];
+            const fields = ['audit_date', 'delivery_centre', 'time_in', 'time_out', 'working_hours', 'warehouse_address', 'warehouse_name', 'auditor_name', 'warehouse_manager_name', 'warehouse_capacity', 'capacity_utilization'];
             const vals = {};
             fields.forEach(f => { vals[f] = document.getElementById(f)?.value || ''; });
-            if (fields.some(f => !vals[f])) validationErrors.push("All questions are mandatory. Please complete all fields before saving.");
-            if (vals.previous_auditor_type === 'External' && !document.getElementById('agency_name')?.value) validationErrors.push("Agency Name is mandatory for External auditor type.");
+            if (fields.some(f => !vals[f])) validationErrors.push("All fields are mandatory. Please complete all fields before saving.");
             fields.forEach(f => { data[f] = vals[f]; });
-            data.agency_name = document.getElementById('agency_name')?.value || '';
             data.warehouse_capacity = parseFloat(vals.warehouse_capacity);
+            data.warehouse_capacity_uom = document.getElementById('warehouse_capacity_uom')?.value || 'MT';
             data.capacity_utilization = parseFloat(vals.capacity_utilization);
+
+            // Collect previous audit records
+            const prevRows = document.querySelectorAll('.prev-audit-row');
+            if (prevRows.length === 0) {
+                validationErrors.push("At least one previous audit record is required.");
+            } else {
+                data.previous_audits = [];
+                prevRows.forEach((row, idx) => {
+                    const date = row.querySelector('.prev-audit-date')?.value || '';
+                    const auditorName = row.querySelector('.prev-auditor-name')?.value.trim() || '';
+                    const auditorType = row.querySelector('.prev-auditor-type')?.value || '';
+                    const agencyName = row.querySelector('.prev-agency-name')?.value.trim() || '';
+                    if (!date) validationErrors.push(`Previous audit record ${idx + 1}: Date is required.`);
+                    if (!auditorName) validationErrors.push(`Previous audit record ${idx + 1}: Auditor Name is required.`);
+                    if (auditorType === 'External' && !agencyName) validationErrors.push(`Previous audit record ${idx + 1}: Agency Name is required for External auditor type.`);
+                    data.previous_audits.push({ date, auditor_name: auditorName, auditor_type: auditorType, agency_name: agencyName });
+                });
+            }
         } else if (section === 'stock_reconciliation') {
             data.commodities = [];
             const commodityList = document.getElementById('commodity-list');
@@ -931,18 +1156,41 @@ if (document.getElementById('section-list')) {
             let allAnswered = true;
             remarksInputs.forEach((input, i) => {
                 const radios = document.querySelectorAll(`input[name="q${i}"]`);
-                const questionLabel = input.parentElement?.querySelector('label.block');
+                const questionDiv = input.closest('.mb-4');
                 let answer = ''; let isAnswered = false;
                 radios.forEach(r => { if (r.checked) { answer = r.value; isAnswered = true; } });
-                if (!isAnswered) allAnswered = false;
-                if (answer === 'No' && !input.value) validationErrors.push(`Remarks are required for all questions answered as 'No'.`);
+
+                // Clear previous error state
+                if (questionDiv) {
+                    questionDiv.classList.remove('border', 'border-red-500', 'bg-red-50', 'rounded-lg', 'p-2');
+                }
+
+                if (!isAnswered) {
+                    allAnswered = false;
+                    if (questionDiv) {
+                        questionDiv.classList.add('border', 'border-red-500', 'bg-red-50', 'rounded-lg', 'p-2');
+                    }
+                } else if (answer === 'No' && !input.value) {
+                    validationErrors.push(`Remarks are required for all questions answered as 'No'.`);
+                    if (questionDiv) {
+                        questionDiv.classList.add('border', 'border-red-500', 'bg-red-50', 'rounded-lg', 'p-2');
+                    }
+                }
+
+                const questionLabel = input.parentElement?.querySelector('label.block');
                 const questionText = questionLabel?.innerText.replace(/^\d+\.\s/, '').replace(/\s\*$/, '') || '';
                 data.questions.push({ question: questionText, answer, remarks: input.value });
             });
-            if (!allAnswered) validationErrors.push("All questions are mandatory. Please complete all fields before saving.");
+            if (!allAnswered) validationErrors.push("All questions are mandatory. Please answer all questions before saving.");
         }
 
-        if (validationErrors.length > 0) { showPopup(validationErrors.join("\n")); return; }
+        if (validationErrors.length > 0) {
+            showPopup(validationErrors[0]);
+            // Scroll to first flagged question
+            const firstError = document.querySelector('.border-red-500');
+            if (firstError) firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
 
         try {
             const res = await fetch(`${API_BASE_URL}/api/save-section`, {
@@ -1002,19 +1250,21 @@ function showExitModal() {
 //  SIDEBAR
 // ─────────────────────────────────────────────────────────────────────────────
 const menuIcon = document.getElementById('menu-icon');
+const menuIconHeader = document.getElementById('menu-icon-header');
 const sidebar = document.getElementById('sidebar');
 const closeSidebar = document.getElementById('close-sidebar');
 if (menuIcon && sidebar) menuIcon.onclick = () => sidebar.classList.remove('-translate-x-full');
+if (menuIconHeader && sidebar) menuIconHeader.onclick = () => sidebar.classList.remove('-translate-x-full');
 if (closeSidebar && sidebar) closeSidebar.onclick = () => sidebar.classList.add('-translate-x-full');
 
 const navChecklist = document.getElementById('nav-checklist');
 if (navChecklist) {
     navChecklist.onclick = () => {
         sidebar?.classList.add('-translate-x-full');
-        ['send-email-section', 'stock-count-section', 'upload-data-section'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
-        document.getElementById('section-list')?.classList.remove('hidden');
-        document.getElementById('submit-audit')?.classList.remove('hidden');
-        document.getElementById('export-excel')?.classList.remove('hidden');
+        ['send-email-section', 'stock-count-section', 'upload-data-section', 'section-content'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+        document.getElementById('checklist-container')?.classList.remove('hidden');
+        document.getElementById('photo-section')?.classList.add('hidden');
+        document.getElementById('signature-section')?.classList.add('hidden');
     };
 }
 
@@ -1033,10 +1283,14 @@ const navStockCount = document.getElementById('nav-stock-count');
 if (navStockCount) {
     navStockCount.onclick = () => {
         sidebar?.classList.add('-translate-x-full');
-        ['section-list', 'send-email-section', 'upload-data-section'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+        ['checklist-container', 'send-email-section', 'upload-data-section', 'section-content'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+        // Also hide photo/signature sections inside section-content
+        document.getElementById('photo-section')?.classList.add('hidden');
+        document.getElementById('signature-section')?.classList.add('hidden');
+        // Stop any active camera stream
+        const video = document.getElementById('video');
+        if (video && video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
         document.getElementById('stock-count-section')?.classList.remove('hidden');
-        document.getElementById('submit-audit')?.classList.add('hidden');
-        document.getElementById('export-excel')?.classList.add('hidden');
     };
 }
 
@@ -1352,3 +1606,125 @@ function openEmailModal(type) {
 document.getElementById('nav-stock-count').addEventListener('click', () => {
     setTimeout(() => loadStockCountItems(), 100);
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  CHECKLIST & STOCK COUNT HISTORY
+// ═════════════════════════════════════════════════════════════════════════════
+
+async function loadChecklistHistory() {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    const container = document.getElementById('checklist-history-list');
+    container.innerHTML = '<p class="text-gray-400 text-center py-8">Loading…</p>';
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/user/checklist-history`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            container.innerHTML = '<p class="text-red-500 text-center py-8">Failed to load history.</p>';
+            return;
+        }
+
+        const history = data.data.history;
+        if (!history.length) {
+            container.innerHTML = '<p class="text-gray-400 text-center py-8">No history found.</p>';
+            return;
+        }
+
+        container.innerHTML = history.map(h => {
+            const pct = Math.round((h.sections_completed / h.sections_total) * 100);
+            const barColor = pct === 100 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-400' : 'bg-red-400';
+            return `
+                <div class="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <div class="font-semibold text-gray-800">${h.warehouse_name}</div>
+                            <div class="text-xs text-gray-500">${h.date} • Submitted: ${new Date(h.submitted_at).toLocaleString()}</div>
+                        </div>
+                        <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Submitted</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="flex-1 bg-gray-200 rounded-full h-2">
+                            <div class="${barColor} h-2 rounded-full transition-all" style="width:${pct}%"></div>
+                        </div>
+                        <span class="text-xs font-semibold text-gray-600">${h.sections_completed}/${h.sections_total}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        container.innerHTML = '<p class="text-red-500 text-center py-8">Error loading history.</p>';
+    }
+}
+
+async function loadStockCountHistory(tab) {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+    
+    const completedContainer = document.getElementById('sc-completed-list');
+    const historyContainer = document.getElementById('sc-history-list');
+    
+    if (tab === 'completed') completedContainer.innerHTML = '<p class="text-gray-400 text-center py-8">Loading…</p>';
+    if (tab === 'history') historyContainer.innerHTML = '<p class="text-gray-400 text-center py-8">Loading…</p>';
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/user/stock-count-history`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            if (tab === 'completed') completedContainer.innerHTML = '<p class="text-red-500 text-center py-8">Failed to load.</p>';
+            if (tab === 'history') historyContainer.innerHTML = '<p class="text-red-500 text-center py-8">Failed to load.</p>';
+            return;
+        }
+
+        if (tab === 'completed') {
+            const completed = data.data.completed;
+            if (!completed.length) {
+                completedContainer.innerHTML = '<p class="text-gray-400 text-center py-8">No completed stock count for today.</p>';
+            } else {
+                completedContainer.innerHTML = completed.map(c => `
+                    <div class="bg-white rounded-lg shadow-sm border p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <div class="font-semibold text-gray-800">${c.warehouse_name}</div>
+                                <div class="text-xs text-gray-500">${c.date} • Submitted: ${new Date(c.submitted_at).toLocaleString()}</div>
+                            </div>
+                            <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Completed</span>
+                        </div>
+                        <div class="text-sm text-gray-600">
+                            <span class="font-semibold text-indigo-600">${c.items_count}</span> items counted
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        if (tab === 'history') {
+            const history = data.data.history;
+            if (!history.length) {
+                historyContainer.innerHTML = '<p class="text-gray-400 text-center py-8">No history found.</p>';
+            } else {
+                historyContainer.innerHTML = history.map(h => `
+                    <div class="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition">
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <div class="font-semibold text-gray-800">${h.warehouse_name}</div>
+                                <div class="text-xs text-gray-500">${h.date} • Submitted: ${new Date(h.submitted_at).toLocaleString()}</div>
+                            </div>
+                            <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Submitted</span>
+                        </div>
+                        <div class="text-sm text-gray-600">
+                            <span class="font-semibold text-indigo-600">${h.items_count}</span> items counted
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+    } catch (err) {
+        if (tab === 'completed') completedContainer.innerHTML = '<p class="text-red-500 text-center py-8">Error loading.</p>';
+        if (tab === 'history') historyContainer.innerHTML = '<p class="text-red-500 text-center py-8">Error loading.</p>';
+    }
+}
