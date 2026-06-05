@@ -79,6 +79,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Base response format
 base_response = {
     "message": "",
