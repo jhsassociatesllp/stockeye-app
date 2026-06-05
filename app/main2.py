@@ -732,22 +732,23 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
     # ---------- Stock Reconciliation ----------
     ws = wb.create_sheet("Stock Reconciliation")
     ws.append([
-        "Commodity", "Stock Type", "Quantity as per Registered",
+        "Commodity", "Stock Type", "Quantity as per MCXCCL", "Quantity as per Registered",
         "Physical", "Difference", "Remarks"
     ])
     stock = sections.get("stock_reconciliation", {}).get("commodities", [])
     if stock:
         for item in stock:
             ws.append([
-                item.get("commodity", ""),
+                item.get("commodity_name", ""),
                 item.get("commodity", ""),          # stock type = commodity field
+                item.get("qty_mcxccl", ""),
                 item.get("qty_registered", ""),
                 item.get("qty_physical", ""),
                 item.get("difference", ""),
                 item.get("remarks", "")
             ])
     else:
-        ws.append(["No stock data.", "", "", "", "", ""])
+        ws.append(["No stock data.", "", "", "", "", "", ""])
     adjust(ws, [20, 20, 20, 20, 20, 30])
     
 

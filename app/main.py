@@ -327,6 +327,10 @@ async def submit_audit(emp_id: str = Depends(get_current_user)):
             raise HTTPException(status_code=404, detail="No audit data found to submit")
         if not all(temp_audit.get("completion_status", {}).values()):
             raise HTTPException(status_code=400, detail="Not all sections are completed")
+        
+        # Update submitted_at timestamp to the actual submission time
+        temp_audit["submitted_at"] = datetime.now(timezone.utc)
+        
         result = audit_data_collection.insert_one(temp_audit)
         temp_audit_data_collection.delete_one({"_id": temp_audit["_id"]})
         response = base_response.copy()
@@ -414,18 +418,19 @@ def get_location(lat: float = Query(...), lon: float = Query(...)):
 #  EXCEL GENERATION HELPER
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
-    today = datetime.now(timezone.utc).date().isoformat()
+def _adjust_ws(ws, widths):
+    for col, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = w
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+
+
+async def generate_checklist_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
+    """Checklist-only Excel – NO Stock Count sheet."""
     wb = Workbook()
     wb.remove(wb.active)
     sections = audit_data.get("sections", {})
-
-    def adjust(ws, widths):
-        for col, w in enumerate(widths, start=1):
-            ws.column_dimensions[get_column_letter(col)].width = w
-        for row in ws.iter_rows(min_row=2):
-            for cell in row:
-                cell.alignment = Alignment(wrap_text=True, vertical="top")
 
     # General Report
     ws = wb.create_sheet("General Report")
@@ -433,21 +438,30 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
     gr = sections.get("general_report", {})
     if gr:
         for k, v in gr.items():
-            ws.append([k.replace("_", " ").title(), str(v)])
+            if k == "previous_audits" and isinstance(v, list):
+                ws.append(["Previous Audits", ""])
+                for i, rec in enumerate(v, start=1):
+                    ws.append([f"  Record {i} – Date", str(rec.get("date", ""))])
+                    ws.append([f"  Record {i} – Auditor Name", str(rec.get("auditor_name", ""))])
+                    ws.append([f"  Record {i} – Auditor Type", str(rec.get("auditor_type", ""))])
+                    if rec.get("agency_name"):
+                        ws.append([f"  Record {i} – Agency Name", str(rec.get("agency_name", ""))])
+            else:
+                ws.append([k.replace("_", " ").title(), str(v)])
     else:
         ws.append(["No general report saved.", ""])
-    adjust(ws, [40, 20])
+    _adjust_ws(ws, [40, 30])
 
     # Stock Reconciliation
     ws = wb.create_sheet("Stock Reconciliation")
-    ws.append(["Commodity Name", "Stock Type", "Qty as per Registered", "Qty as per Physical", "Difference", "Remarks"])
+    ws.append(["Commodity Name", "Stock Type", "Qty as per MCXCCL", "Qty as per Registered", "Qty as per Physical", "Difference", "Remarks"])
     stock = sections.get("stock_reconciliation", {}).get("commodities", [])
     if stock:
         for item in stock:
-            ws.append([item.get("commodity_name",""), item.get("commodity",""), item.get("qty_registered",""), item.get("qty_physical",""), item.get("difference",""), item.get("remarks","")])
+            ws.append([item.get("commodity_name",""), item.get("commodity",""), item.get("qty_mcxccl",""), item.get("qty_registered",""), item.get("qty_physical",""), item.get("difference",""), item.get("remarks","")])
     else:
-        ws.append(["No stock data.", "", "", "", "", ""])
-    adjust(ws, [20, 20, 20, 20, 20, 30])
+        ws.append(["No stock data.", "", "", "", "", "", ""])
+    _adjust_ws(ws, [20, 20, 20, 20, 20, 20, 30])
 
     # Question-based sections
     q_sections = [
@@ -469,19 +483,7 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
                 ws.append([f"{idx}. {q.get('question', f'Question {idx}').strip()}", q.get("answer","").strip(), q.get("remarks","").strip()])
         else:
             ws.append(["No data saved.", "", ""])
-        adjust(ws, [60, 10, 30])
-
-    # Stock Count (grouped by sheet)
-    ws = wb.create_sheet("Stock Count")
-    ws.append(["Sheet", "Item Code", "Item Name", "Expected Qty", "Physical Amount", "Remarks"])
-    audit = audit_data
-    stock_count_data = audit.get("stock_count_data", [])
-    if stock_count_data:
-        for item in stock_count_data:
-            ws.append([item.get("sheet_name",""), item.get("item_code",""), item.get("item_name",""), item.get("qty",""), item.get("physical_amount",""), item.get("remarks","")])
-    else:
-        ws.append(["No stock count data.", "", "", "", "", ""])
-    adjust(ws, [20, 20, 30, 15, 15, 30])
+        _adjust_ws(ws, [60, 10, 30])
 
     # Signature
     ws = wb.create_sheet("Signature")
@@ -492,8 +494,10 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
             img_bytes = io.BytesIO(base64.b64decode(img_data))
             img = Image(img_bytes)
             img.width = 250; img.height = 150
-            ws.add_image(img, "A1")
-            ws["A3"] = "Signature captured during the audit"
+            ws["A1"] = "Signature captured during the audit"
+            ws.row_dimensions[1].height = 18
+            ws.row_dimensions[2].height = 8
+            ws.add_image(img, "A3")
         except Exception as e:
             ws["A1"] = f"Unable to embed signature: {e}"
     else:
@@ -509,8 +513,6 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
     row = 1
     if maps_url:
         ws["A1"] = "Maps URL"; ws["B1"] = maps_url; row += 2
-
-    # Resolve photo bytes: prefer GridFS, fall back to inline base64
     photo_bytes = None
     if photo_file_id:
         try:
@@ -525,7 +527,6 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
             photo_bytes = base64.b64decode(img_data)
         except Exception as b64_err:
             logger.warning(f"Base64 photo decode failed for export: {b64_err}")
-
     if photo_bytes:
         try:
             img = Image(io.BytesIO(photo_bytes)); img.width = 350; img.height = 250
@@ -542,6 +543,28 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
     wb.save(out)
     out.seek(0)
     return out.read()
+
+
+def generate_stock_count_excel_bytes(audit_data: dict) -> bytes:
+    """Stock-count-only Excel – no checklist sheets."""
+    sc_data = audit_data.get("stock_count_data", [])
+    df = pd.DataFrame(sc_data) if sc_data else pd.DataFrame(columns=["sheet_name", "item_name", "item_code", "qty", "physical_amount", "remarks"])
+    columns = ["sheet_name", "item_name", "item_code", "qty", "physical_amount", "remarks"]
+    available_cols = [c for c in columns if c in df.columns]
+    df = df[available_cols]
+    df.rename(columns={"sheet_name": "Sheet Name", "item_name": "Item Name",
+                       "item_code": "Item Code", "qty": "Expected Qty",
+                       "physical_amount": "Physical Count", "remarks": "Remarks"}, inplace=True)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Stock Count')
+    return output.getvalue()
+
+
+# keep old name as alias so existing callers still work
+async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
+    return await generate_checklist_excel_bytes(emp_id, audit_data)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -588,43 +611,105 @@ async def export_excel(emp_id: str = Depends(get_current_user)):
 @app.post("/api/send-email")
 async def send_email(
     to_email: str = Form(...),
-    attachment: UploadFile = File(...),
+    attachment: Optional[UploadFile] = File(default=None),
+    email_type: str = Form(default="checklist"),   # "checklist" or "stock-count"
+    audit_id: Optional[str] = Form(default=None),
     emp_id: str = Depends(get_current_user)
 ):
+    """
+    email_type='checklist'  → validates checklist sections, attaches checklist Excel.
+    email_type='stock-count' → validates stock count submission, attaches stock-count Excel.
+    """
     try:
+        # Get user name for email subject
+        user = users.find_one({"email": emp_id})
+        user_name = user.get("name", "Unknown") if user else "Unknown"
+        
         today = datetime.now(timezone.utc).date().isoformat()
-        allowed_extensions = (".pdf", ".xlsx", ".xls")
-        if not attachment.filename.lower().endswith(allowed_extensions):
-            return JSONResponse({"message": "Only PDF or Excel files are allowed", "success": False}, status_code=400)
-        pdf_bytes = await attachment.read()
-        pdf_name = attachment.filename
-        # Check temp collection first (in-progress), then submitted collection
-        audit_data = audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        
+        # Resolve audit_data based on audit_id if provided, else fallback to today
+        if audit_id:
+            from bson import ObjectId
+            audit_data = audit_data_collection.find_one({"user_id": emp_id, "_id": ObjectId(audit_id)})
+            if not audit_data:
+                audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "_id": ObjectId(audit_id)})
+        else:
+            audit_data = audit_data_collection.find_one({"user_id": emp_id, "date": today})
+            if not audit_data:
+                audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+
         if not audit_data:
-            audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
-        if not audit_data:
-            return JSONResponse({"message": "No audit data for today", "success": False}, status_code=404)
-        completion = audit_data.get("completion_status", {})
-        expected = [
-            "general_report", "stock_reconciliation",
-            "observations_on_stacking", "observations_on_warehouse_operations",
-            "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
-            "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
-            "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
-            "signature", "photo"
-        ]
-        if not all(completion.get(s, False) for s in expected):
-            return JSONResponse({"message": "Complete all sections before sending e-mail", "success": False}, status_code=400)
-        excel_bytes = await generate_excel_bytes(emp_id, audit_data)
-        excel_name = f"audit_{emp_id}_{today}.xlsx"
+            return JSONResponse({"message": "No audit data found to email", "success": False}, status_code=404)
+
+        target_date = audit_data.get("date", today)
+
+        if email_type == "stock-count":
+            # Only validate that stock count was submitted
+            if not audit_data.get("completion_status", {}).get("stock_count", False):
+                return JSONResponse({"message": "Please submit stock count before sending email", "success": False}, status_code=400)
+            if not audit_data.get("stock_count_data"):
+                return JSONResponse({"message": "No stock count data found", "success": False}, status_code=400)
+            # Build stock-count-only Excel
+            data = audit_data["stock_count_data"]
+            df = pd.DataFrame(data)
+            columns = ["sheet_name", "item_name", "item_code", "qty", "physical_amount", "remarks"]
+            available_cols = [c for c in columns if c in df.columns]
+            df = df[available_cols]
+            df.rename(columns={"sheet_name": "Sheet Name", "item_name": "Item Name",
+                                "item_code": "Item Code", "qty": "Expected Qty",
+                                "physical_amount": "Physical Count", "remarks": "Remarks"}, inplace=True)
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Stock Count')
+            excel_bytes = output.getvalue()
+            excel_name = f"Stock_Count_{target_date}.xlsx"
+            subject = f"Stock Count Report – {target_date} – {user_name}"
+            body = f"Dear Manager,\n\nPlease find the Stock Count report attached.\n\nRegards,\n{user_name}\nAudit App"
+        else:
+            # Checklist — validate all checklist sections
+            completion = audit_data.get("completion_status", {})
+            expected = [
+                "general_report", "stock_reconciliation",
+                "observations_on_stacking", "observations_on_warehouse_operations",
+                "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
+                "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
+                "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
+                "signature", "photo"
+            ]
+            if not all(completion.get(s, False) for s in expected):
+                return JSONResponse({"message": "Complete all checklist sections before sending email", "success": False}, status_code=400)
+            excel_bytes = await generate_excel_bytes(emp_id, audit_data)
+            excel_name = f"Checklist_Audit_{target_date}.xlsx"
+            subject = f"Checklist Audit Report – {target_date} – {user_name}"
+            body = f"Dear Auditor Manager,\n\nPlease find the Checklist Audit report attached.\n\nRegards,\n{user_name}\nAudit App"
+
         msg = EmailMessage()
-        msg["Subject"] = f"Audit Report – {today}"
+        msg["Subject"] = subject
         msg["From"] = os.getenv("MAIL_USERNAME")
         msg["To"] = to_email
         msg["Cc"] = emp_id
-        msg.set_content(f"""Dear Auditor Manager,\n\nPlease find attached:\n1. The PDF you uploaded ({pdf_name})\n2. The audit data in Excel format ({excel_name})\n\nRegards,\nAudit App (via Gmail SMTP)\n""")
-        msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=pdf_name)
-        msg.add_attachment(excel_bytes, maintype="application", subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename=excel_name)
+        msg.set_content(body)
+
+        # Only attach user-uploaded file if provided (don't attach the generated Excel twice)
+        if attachment:
+            attachment_bytes = await attachment.read()
+            attachment_name = attachment.filename
+            allowed_extensions = (".pdf", ".xlsx", ".xls")
+            if not attachment_name.lower().endswith(allowed_extensions):
+                return JSONResponse({"message": "Only PDF or Excel files are allowed", "success": False}, status_code=400)
+            
+            msg.add_attachment(
+                attachment_bytes, 
+                maintype="application",
+                subtype="pdf" if attachment_name.lower().endswith('.pdf') else "vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                filename=attachment_name
+            )
+
+        # Always attach the generated excel sheet
+        msg.add_attachment(excel_bytes, maintype="application",
+                           subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           filename=excel_name)
+
         with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
             smtp.ehlo(); smtp.starttls()
             smtp.login(os.getenv("MAIL_USERNAME"), os.getenv("MAIL_PASSWORD"))
@@ -914,13 +999,39 @@ async def submit_stock_count(emp_id: str = Depends(get_current_user)):
             return JSONResponse({"message": "No stock count data found", "success": False}, status_code=404)
         if not audit.get("stock_count_data"):
             return JSONResponse({"message": "Please count at least one item before submitting", "success": False}, status_code=400)
+        
+        # Mark stock count as complete in temp collection
         temp_audit_data_collection.update_one(
             {"_id": audit["_id"]},
-            {"$set": {"completion_status.stock_count": True}}
+            {"$set": {
+                "completion_status.stock_count": True,
+                "submitted_at": datetime.now(timezone.utc)
+            }}
         )
-        return JSONResponse({"message": "Stock count submitted successfully", "success": True}, status_code=200)
+        
+        # Also create/update in audit_data_collection so it appears in Completed tab
+        existing_audit = audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        if existing_audit:
+            # Update existing audit with stock count data
+            audit_data_collection.update_one(
+                {"_id": existing_audit["_id"]},
+                {"$set": {
+                    "stock_count_data": audit.get("stock_count_data"),
+                    "completion_status.stock_count": True,
+                    "submitted_at": datetime.now(timezone.utc)
+                }}
+            )
+            audit_id = str(existing_audit["_id"])
+        else:
+            # Create new audit record for stock count only
+            audit["submitted_at"] = datetime.now(timezone.utc)
+            result = audit_data_collection.insert_one(audit.copy())
+            audit_id = str(result.inserted_id)
+        
+        return JSONResponse({"message": "Stock count submitted successfully", "success": True, "data": {"audit_id": audit_id}}, status_code=200)
     except Exception as e:
         logger.error(f"Submit stock count error: {e}")
+        return JSONResponse({"message": f"Failed to submit: {str(e)}", "success": False}, status_code=500)
 # ─────────────────────────────────────────────────────────────────────────────
 #  EXPORT STOCK COUNT EXCEL
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1371,10 +1482,11 @@ async def user_checklist_history(emp_id: str = Depends(get_current_user)):
     try:
         history = list(audit_data_collection.find(
             {"user_id": emp_id},
-            {"_id": 0, "date": 1, "submitted_at": 1, "sections": 1, "completion_status": 1}
+            {"_id": 1, "date": 1, "submitted_at": 1, "sections": 1, "completion_status": 1}
         ).sort("date", -1))
-        
+
         for h in history:
+            h["audit_id"] = str(h.pop("_id"))
             if "submitted_at" in h and isinstance(h["submitted_at"], datetime):
                 h["submitted_at"] = h["submitted_at"].isoformat()
             wh_name = (h.get("sections") or {}).get("general_report", {}).get("warehouse_name", "—")
@@ -1382,11 +1494,140 @@ async def user_checklist_history(emp_id: str = Depends(get_current_user)):
             cs = h.get("completion_status", {})
             h["sections_completed"] = sum(1 for s in CHECKLIST_SECTIONS if cs.get(s, False))
             h["sections_total"] = len(CHECKLIST_SECTIONS)
-        
+            # Keep completion_status in response so frontend can show per-section badges
+            h["completion_status"] = cs
+            # Strip heavy section data from list response (photos/signatures are large)
+            h.pop("sections", None)
+
         return JSONResponse({"message": "History fetched", "success": True,
                              "data": {"history": history}}, status_code=200)
     except Exception as e:
         logger.error(f"Checklist history error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+
+@app.get("/api/export-excel-by-date")
+async def export_excel_by_date(date: str = Query(...), emp_id: str = Depends(get_current_user)):
+    """Download the Excel for a historical audit by its date (from the History tab)."""
+    try:
+        audit_data = audit_data_collection.find_one({"user_id": emp_id, "date": date})
+        if not audit_data:
+            return JSONResponse({"message": f"No submitted audit found for {date}", "success": False}, status_code=404)
+        excel_bytes = await generate_excel_bytes(emp_id, audit_data)
+        filename = f"Audit_{date}.xlsx"
+        return StreamingResponse(
+            io.BytesIO(excel_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"}
+        )
+    except Exception as e:
+        logger.error(f"export-excel-by-date error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+
+@app.get("/api/export-excel-by-id")
+async def export_excel_by_id(audit_id: str = Query(...), emp_id: str = Depends(get_current_user)):
+    """Download the Excel for a historical checklist audit by its specific MongoDB ObjectId."""
+    try:
+        from bson import ObjectId
+        audit_data = audit_data_collection.find_one({"user_id": emp_id, "_id": ObjectId(audit_id)})
+        if not audit_data:
+            return JSONResponse({"message": "No submitted audit found", "success": False}, status_code=404)
+        excel_bytes = await generate_checklist_excel_bytes(emp_id, audit_data)
+        date = audit_data.get("date", "Report")
+        wh_name = (audit_data.get("sections") or {}).get("general_report", {}).get("warehouse_name", "Audit")
+        safe_wh_name = re.sub(r'[\s/\\?*\[\]:]+', '_', wh_name)
+        filename = f"Audit_{safe_wh_name}_{date}.xlsx"
+        return StreamingResponse(
+            io.BytesIO(excel_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"}
+        )
+    except Exception as e:
+        logger.error(f"export-excel-by-id error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+
+@app.get("/api/export-stock-count-excel-by-id")
+async def export_stock_count_excel_by_id(audit_id: str = Query(...), emp_id: str = Depends(get_current_user)):
+    """Download the Excel for a historical stock count by its specific MongoDB ObjectId."""
+    try:
+        from bson import ObjectId
+        audit = audit_data_collection.find_one({"user_id": emp_id, "_id": ObjectId(audit_id)})
+        if not audit or not audit.get("stock_count_data"):
+            return JSONResponse({"message": "No stock count data found", "success": False}, status_code=404)
+        
+        data = audit["stock_count_data"]
+        df = pd.DataFrame(data)
+        columns = ["sheet_name", "item_name", "item_code", "qty", "physical_amount", "remarks"]
+        available_cols = [c for c in columns if c in df.columns]
+        df = df[available_cols]
+        df.rename(columns={
+            "sheet_name": "Sheet Name", 
+            "item_name": "Item Name", 
+            "item_code": "Item Code", 
+            "qty": "Expected Qty", 
+            "physical_amount": "Physical Count", 
+            "remarks": "Remarks"
+        }, inplace=True)
+
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Stock Count')
+        excel_bytes = output.getvalue()
+
+        date = audit.get("date", "Report")
+        wh_name = (audit.get("sections") or {}).get("general_report", {}).get("warehouse_name", "Audit")
+        safe_wh_name = re.sub(r'[\s/\\?*\[\]:]+', '_', wh_name)
+        filename = f"Stock_Count_{safe_wh_name}_{date}.xlsx"
+        return StreamingResponse(
+            io.BytesIO(excel_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"}
+        )
+    except Exception as e:
+        logger.error(f"export-stock-count-excel-by-id error: {e}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+
+@app.get("/api/get-historical-section/{audit_id}/{section_name}")
+async def get_historical_section(audit_id: str, section_name: str, emp_id: str = Depends(get_current_user)):
+    """Retrieve historical section data for a submitted audit."""
+    try:
+        from bson import ObjectId
+        audit = audit_data_collection.find_one({"user_id": emp_id, "_id": ObjectId(audit_id)})
+        if not audit:
+            return JSONResponse({"message": "Historical audit not found", "success": False}, status_code=404)
+        section_data = audit.get("sections", {}).get(section_name, {})
+        response = base_response.copy()
+        response.update({
+            "message": f"Historical section {section_name} retrieved successfully",
+            "success": True,
+            "data": {"section_data": section_data},
+            "status_code": status.HTTP_200_OK
+        })
+        return JSONResponse(content=response, status_code=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error in get_historical_section: {str(e)}")
+        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
+
+
+@app.get("/api/get-historical-stock-count/{audit_id}")
+async def get_historical_stock_count(audit_id: str, emp_id: str = Depends(get_current_user)):
+    """Retrieve historical stock count data for a submitted audit."""
+    try:
+        from bson import ObjectId
+        audit = audit_data_collection.find_one({"user_id": emp_id, "_id": ObjectId(audit_id)})
+        if not audit:
+            return JSONResponse({"message": "Historical audit not found", "success": False}, status_code=404)
+        sc_data = audit.get("stock_count_data", [])
+        return JSONResponse({
+            "message": "Historical stock count retrieved successfully",
+            "success": True,
+            "data": {"stock_count_data": sc_data}
+        }, status_code=200)
+    except Exception as e:
+        logger.error(f"Error in get_historical_stock_count: {str(e)}")
         return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
 
 
@@ -1396,13 +1637,18 @@ async def user_stock_count_history(emp_id: str = Depends(get_current_user)):
     try:
         today = datetime.now(timezone.utc).date().isoformat()
         
-        # Current in-progress (temp collection)
-        current_temp = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        # Current in-progress (temp collection) - only show if stock count not submitted
+        current_temp = temp_audit_data_collection.find_one({
+            "user_id": emp_id,
+            "date": today,
+            "completion_status.stock_count": {"$ne": True}
+        })
         pending_items = []
         if current_temp:
             wh_name = (current_temp.get("sections") or {}).get("general_report", {}).get("warehouse_name", "—")
             sc_data = current_temp.get("stock_count_data", [])
             pending_items = [{
+                "audit_id": str(current_temp["_id"]),
                 "date": current_temp.get("date"),
                 "warehouse_name": wh_name,
                 "items_count": len(sc_data),
@@ -1411,7 +1657,11 @@ async def user_stock_count_history(emp_id: str = Depends(get_current_user)):
             }]
         
         # Completed (submitted today - in audit_data_collection)
-        completed_today = audit_data_collection.find_one({"user_id": emp_id, "date": today})
+        completed_today = audit_data_collection.find_one({
+            "user_id": emp_id,
+            "date": today,
+            "completion_status.stock_count": True
+        })
         completed_items = []
         if completed_today:
             wh_name = (completed_today.get("sections") or {}).get("general_report", {}).get("warehouse_name", "—")
@@ -1420,6 +1670,7 @@ async def user_stock_count_history(emp_id: str = Depends(get_current_user)):
             if isinstance(submitted_at, datetime):
                 submitted_at = submitted_at.isoformat()
             completed_items = [{
+                "audit_id": str(completed_today["_id"]),
                 "date": completed_today.get("date"),
                 "warehouse_name": wh_name,
                 "items_count": len(sc_data),
@@ -1428,10 +1679,10 @@ async def user_stock_count_history(emp_id: str = Depends(get_current_user)):
                 "stock_count_data": sc_data
             }]
         
-        # History (all past submitted audits)
+        # History (all past submitted audits with stock count filled)
         history = list(audit_data_collection.find(
-            {"user_id": emp_id},
-            {"_id": 0, "date": 1, "submitted_at": 1, "sections": 1, "stock_count_data": 1}
+            {"user_id": emp_id, "completion_status.stock_count": True},
+            {"_id": 1, "date": 1, "submitted_at": 1, "sections": 1, "stock_count_data": 1}
         ).sort("date", -1))
         
         history_items = []
@@ -1442,6 +1693,7 @@ async def user_stock_count_history(emp_id: str = Depends(get_current_user)):
             if isinstance(submitted_at, datetime):
                 submitted_at = submitted_at.isoformat()
             history_items.append({
+                "audit_id": str(h["_id"]),
                 "date": h.get("date"),
                 "warehouse_name": wh_name,
                 "items_count": len(sc_data),

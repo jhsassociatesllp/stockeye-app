@@ -239,6 +239,7 @@ if (backToDashboardButton) {
     backToDashboardButton.onclick = () => {
         document.getElementById('section-content')?.classList.add('hidden');
         document.getElementById('checklist-container')?.classList.remove('hidden');
+        document.getElementById('section-list')?.classList.remove('hidden');
         document.getElementById('photo-section').classList.add('hidden');
         document.getElementById('signature-section').classList.add('hidden');
         document.getElementById('send-email-section').classList.add('hidden');
@@ -674,6 +675,7 @@ if (document.getElementById('section-list')) {
                         <div class="mt-3" id="commodity-body-${idx}">
                             <div class="mb-2"><label class="block text-gray-700 mb-1">Commodity Name <span class="mandatory-star">*</span></label><input type="text" id="commodity-name-${idx}" class="w-full p-2 border rounded-lg" placeholder="Enter Commodity Name"></div>
                             <div class="mb-2"><label class="block text-gray-700 mb-1">Stock <span class="mandatory-star">*</span></label><select id="commodity-select-${idx}" class="w-full p-2 border rounded-lg"><option value="">-- Select Stock --</option><option value="Valid Stock">Valid Stock</option><option value="Under QC">Under QC</option><option value="Rejected">Rejected</option><option value="FED">FED</option><option value="Non-exchange">Non-exchange</option></select></div>
+                            <div class="mb-2"><label class="block text-gray-700 mb-1">Quantity as per MCXCCL <span class="mandatory-star">*</span></label><input type="number" id="qty-mcxccl-${idx}" min="0" step="any" class="w-full p-2 border rounded-lg"></div>
                             <div class="mb-2"><label class="block text-gray-700 mb-1">Quantity as per Registered <span class="mandatory-star">*</span></label><input type="number" id="qty-registered-${idx}" min="0" step="any" class="w-full p-2 border rounded-lg"></div>
                             <div class="mb-2"><label class="block text-gray-700 mb-1">Quantity as per Physical <span class="mandatory-star">*</span></label><input type="number" id="qty-physical-${idx}" min="0" step="any" class="w-full p-2 border rounded-lg"></div>
                             <div class="mb-2"><label class="block text-gray-700 mb-1">Difference (Registered - Physical)</label><input type="text" id="difference-${idx}" readonly class="w-full p-2 border rounded-lg bg-gray-100"></div>
@@ -683,6 +685,7 @@ if (document.getElementById('section-list')) {
                     if (dataObj) {
                         document.getElementById(`commodity-name-${idx}`).value = dataObj.commodity_name || '';
                         document.getElementById(`commodity-select-${idx}`).value = dataObj.commodity || '';
+                        document.getElementById(`qty-mcxccl-${idx}`).value = dataObj.qty_mcxccl || '';
                         document.getElementById(`qty-registered-${idx}`).value = dataObj.qty_registered || '';
                         document.getElementById(`qty-physical-${idx}`).value = dataObj.qty_physical || '';
                         document.getElementById(`difference-${idx}`).value = dataObj.difference || '';
@@ -699,7 +702,7 @@ if (document.getElementById('section-list')) {
                         document.getElementById(`commodity-title-${idx}`).textContent = name ? `Commodity ${idx} - ${name}` : `Commodity ${idx}`;
                         document.getElementById(`commodity-subtitle-${idx}`).textContent = stock || '';
                     }
-                    ['commodity-name-', 'commodity-select-', 'qty-registered-', 'qty-physical-'].forEach(prefix => {
+                    ['commodity-name-', 'commodity-select-', 'qty-mcxccl-', 'qty-registered-', 'qty-physical-'].forEach(prefix => {
                         const el = document.getElementById(prefix + idx);
                         if (el) { el.addEventListener('input', recompute); el.addEventListener('change', recompute); }
                     });
@@ -733,7 +736,7 @@ if (document.getElementById('section-list')) {
                     observations_on_wh_infrastructure: ["Warehouse condition (both internal/external) is in sound and store worthy condition?", "Is there any roof leakage / Infrastructure damage? If Yes, whether the incident record updated with details?", "Whether the warehouse is well-protected by pucca boundary wall / barbed wire fencing?", "Whether warehouse is having good drivable approach road & adequate parking space for vehicles?", "Whether flooring is even without major cracks / crevices/ dampness or required major structural repairing?", "Whether hygiene & cleanliness inside the warehouse & premises and vegetation cleaning surrounding the warehouse maintained? Whether dusting of stock, cleaning of bird droppings on stacks, floor cleaning and any minor/major structural repair conducted on a periodic basis? Is the record of the house keeping maintained?", "Whether any infestation by termites/ white ants and rodents in the buildings and warehouse premises is noticed? Whether annual termite treatment record is maintained at cotton/kapas warehouse? Whether termite treatment certificate is available at cotton/kapas warehouse?", "Whether rat cages are placed inside the warehouse? Whether rodenticides used to control rodents?", "Whether surveillance cameras (CCTV) are installed at the warehouse?", "Whether warehouse maintains 90 days CCTV footage of surveillance? mention the date from which CCTV footage is available.", "Whether the cctv camera positioned towards weighment scale inside the warehouse? Verify the cctv footage.", "Whether Handling equipment available?", "Whether the walls are properly plastered and painted/white washed and are free from cracks and crevices?", "Whether adequate ventilators and air inlets are available? (Mention no. of ventilators and air inlets)", "Whether the WH office is inside the godown? (not acceptable for cotton)", "Mention type of Flooring: Concrete / Stones / Tiles / trimix/ Bricks flooring (Mentha Oil WH) /No flooring/Other", "Whether the warehouse has adequate plinth (elevation from ground level) as per WDRA norm?", "Whether there are adequate arrangements for drainage of rainwater to avoid flooding?", "Whether load bearing capacity certificate available at warehouse? (in case of metal warehouse)", "Whether Sufficient office space available for equipment viz. computers with internet facility, telephone and furniture (table, chairs almirah, etc.)"],
                     observations_on_quality_operation: ["Is cotton bales moisture meter in working condition or Not? If not then has the same been recorded in incident register available at warehouse?", "Is moisture meter available at warehouse?", "Last calibrated on …………. (dd/mm/yyyy)", "Is inward /outward moisture checked or not? (lot wise moisture record) in case of cotton", "Are necessary sampling details updated on sample tag within one working day? (Name of warehouse, date of sampling, stack no, lot No.)", "Is Reference sample duly sealed & signed by the WH official/in charge?", "Is signature of beneficiary/Client or authorized personal of the client is taken on reference sample?", "Is the sample storage area secure and demarcated? Are the samples kept in rack / pallet / in Almirah or trunk in the sample storage area?", "Whether Reference samples with all relevant details kept in proper custody until the lot is present in the warehouse?", "Is record for courier of samples to the assayer available?", "Do the Goods stored come into direct contact with water or excess moisture which can be detrimental to its usability or quality?"],
                     checklist_wrt_exchange_circular_mentha_oil: ["Any records available regarding person visits to depositor place for weighing the empty drums?", "Are there any proof / records available stating that the empty drum Weighment is done on calibrated weighbridge or weighing scale?", "Whether the white sticker is non-tearable and non-removable?", "Whether sticker is signed and date mentioned with permanent marker?", "Any Drums accepted without white stickers?", "Whether any record of preliminary testing is available or not?", "Whether the weight of the Mentha Oil in drum is 180 kg Net or within tolerance limit of 1% (i.e. +/- 1.8 Kg) as prescribed in Procedure for dealing with Mentha oil? Check the weight randomly", "Whether the lot numbers are mentioned on drums with permanent marker?", "Whether the drums in same lot are kept together and traceable?", "Whether any record available for revalidation? (If any)", "Is any undertaking taken from the Beneficiary/Client, if required or applicable?", "In case of damaged/leaked drums, whether the drum is changed immediately & record of the same is maintained/updated in incidence register?", "Whether the firm/ company depositing Mentha Oil is registered in the respective local Mandi? (verify the records)"],
-                    checklist_wrt_exchange_circular_metal: ["Whether the Certificate of Analysis (CoA) of the producer at the time of deposits with containing details like Brand name of the associated lots, Producer's name, Batch No & certificate date been collected by warehouse?", "Whether the packing list for deposited goods are available as per the latest circular or not with following details; - Contains net weight - Contains gross weight - Contains batch no - No. of units in bundles/lot.", "Whether the copy of Invoice available for all deposits?", "Whether the copy of Certificate of Origin and Custom clearance documents are available in case of Imported goods or not?", "Whether the producer's sticker is available or not on each ingots/ bundle?", "Whether the following details are mentioned in sticker or not? • Producer/ manufacturer name • Net Weight • Batch No (printed/sticker/stenciled/laser?) • Purity • Date of Manufacturing/ Production • Number of Pieces of Ingots/ sheets in each bundle", "Whether batch number/lot number is hand written?", "Whether the Ingots/ bundle are physically sound and free of harmful/ any defects? (such as segregation, piping, spilt /broken, inclusions or visible contamination of metal)", "Whether mixing of bundle(s) of different brands are observed?", "Whether the annual Inspection of electrical points done or not? Check the record.", "In case, more than 1 strap is broken, whether re-strapping is done every 07 working days from the date of strap broken & record of the strap break and re-strapping is maintained? In incidence register?", "Same commodity non-exchange goods shall not be kept mingled in the same warehouse which is used for MCXCCL purposes.", "Whether all re-mated stock physically delivered from the warehouse and not stored as non-exchange/professional goods.", "Is there any sign of corrosion in stored stocks?"],
+                    checklist_wrt_exchange_circular_metal: ["Whether the Certificate of Analysis (CoA) of the producer at the time of deposits with containing details like Brand name of the associated lots, Producer's name, Batch No & certificate date been collected by warehouse?", "Whether the packing list for deposited goods are available as per the latest circular or not with following details; - Contains net weight - Contains gross weight - Contains batch no - No. of units in bundles/lot.", "Whether the copy of Invoice available for all deposits?", "Whether the copy of Certificate of Origin and Custom clearance documents are available in case of Imported goods or not?", "Whether the producer's sticker is available or not on each ingots/ bundle?", "Whether the following details are mentioned in sticker or not? • Producer/ manufacturer name • Net Weight • Batch No (printed/sticker/stenciled/laser?) • Purity • Date of Manufacturing/ Production • Number of Pieces of Ingots/ sheets in each bundle", "Whether batch number/lot number is hand written?", "Whether the Ingots/ bundle are physically sound and free of harmful/ any defects? (such as segregation, piping, spilt /broken, inclusions or visible contamination of metal)", "Whether mixing of bundle(s) of different brands are observed?", "Whether the annual Inspection of electrical points done or not? Check the record.", "In case, more than 1 strap is broken, whether re-strapping is done every 07 working days from the date of strap broken & record of the strap break and re-strapping is maintained? In incidence register?", "Same commodity non-exchange goods shall not be kept mingled in the same warehouse which is used for MCXCCL purposes.", "Whether all re-mated stock physically delivered from the warehouse and not stored as non-exchange/professional goods.", "Is there any sign of corrosion in stored stocks?", "Whether the goods stored at MAW are bearing Standard Mark under a license from Bureau of Indian Standards (BIS) for metals where BIS is applicable.", "Whether approval for storing non-exchange metal goods of exchange deliverable grades taken from MCXCCL prior to storage? Whether approval sought for storage of non-exchange goods are as per list of approved brands of LME/MCX?", "Whether WSP has sought approval for how much quantity to be stored? Whether quantity lying at warehouse are as per the approval taken?", "Whether any metal goods of brands stored which is in the restrictive list of LME/MCX and for which approval is not taken?"],
                     checklist_wrt_exchange_circular_cotton_bales: ["Whether bales have all the proper markings in the form of unique press running number (PRN) Whether every bale has a label giving details of variety weight, crop year when checked randomly? And any other details as may be required from time to time? Does each bale have a label / sticker giving the bale number in figures along with ginner details?", "Whether warehouse has put in a deposit stamp / sticker, containing the date of deposit of the goods on each bale deposited?", "Forklift – battery operated or fuel operated?", "Placement of the Firefighting equipment? Inside the godown or outside? (Placement inside the godown is not allowed)", "Proximity to source of fire hazard if any. whether any fire-risk is noticed in close vicinity of the warehouse? Mention the approximate distance of source of fire risk.", "Whether cotton samples are stored inside the godown?", "Whether opening and closing of cotton godown is done under supervision of Warehouse Manager and the register maintained indicating the purpose of opening and date and time of opening/closing?", "In case, more than 3 straps of bales are broken, whether re-strapping of the bales is done within 10 working days from the date of strap broken & record of the strap break and re-strapping is maintained? In incidence register?"]
                 };
                 const questions = questionsMap[section] || [];
@@ -1138,22 +1141,29 @@ if (document.getElementById('section-list')) {
             } else {
                 Array.from(commodityList.children).forEach((card, idx) => {
                     const suf = card.id.split('commodity-card-')[1] || (idx + 1);
+                    const commodityName = document.getElementById(`commodity-name-${suf}`)?.value.trim() || '';
                     const commodity = document.getElementById(`commodity-select-${suf}`)?.value.trim() || '';
+                    const qtyMcxcclRaw = document.getElementById(`qty-mcxccl-${suf}`)?.value.trim() || '';
                     const qtyRegisteredRaw = document.getElementById(`qty-registered-${suf}`)?.value.trim() || '';
                     const qtyPhysicalRaw = document.getElementById(`qty-physical-${suf}`)?.value.trim() || '';
+                    const qtyMcxccl = qtyMcxcclRaw === '' ? null : parseFloat(qtyMcxcclRaw);
                     const qtyRegistered = qtyRegisteredRaw === '' ? null : parseFloat(qtyRegisteredRaw);
                     const qtyPhysical = qtyPhysicalRaw === '' ? null : parseFloat(qtyPhysicalRaw);
-                    if (!commodity) validationErrors.push(`Commodity is required for row ${idx + 1}.`);
+                    if (!commodityName) validationErrors.push(`Commodity Name is required for row ${idx + 1}.`);
+                    if (!commodity) validationErrors.push(`Stock Type is required for row ${idx + 1}.`);
+                    if (qtyMcxcclRaw === '' || isNaN(qtyMcxccl)) validationErrors.push(`Quantity as per MCXCCL is required and must be numeric for row ${idx + 1}.`);
                     if (qtyRegisteredRaw === '' || isNaN(qtyRegistered)) validationErrors.push(`Quantity as per Registered is required and must be numeric for row ${idx + 1}.`);
                     if (qtyPhysicalRaw === '' || isNaN(qtyPhysical)) validationErrors.push(`Quantity as per Physical is required and must be numeric for row ${idx + 1}.`);
                     const difference = (qtyRegistered !== null && qtyPhysical !== null) ? (qtyRegistered - qtyPhysical) : null;
-                    data.commodities.push({ commodity, qty_registered: qtyRegistered, qty_physical: qtyPhysical, difference, remarks: document.getElementById(`remarks-${suf}`)?.value?.trim() || '' });
+                    data.commodities.push({ commodity_name: commodityName, commodity, qty_mcxccl: qtyMcxccl, qty_registered: qtyRegistered, qty_physical: qtyPhysical, difference, remarks: document.getElementById(`remarks-${suf}`)?.value?.trim() || '' });
                 });
             }
         } else {
             data.questions = [];
             const remarksInputs = document.querySelectorAll('[id^="remarks"]');
             let allAnswered = true;
+            let unansweredQuestions = [];
+            
             remarksInputs.forEach((input, i) => {
                 const radios = document.querySelectorAll(`input[name="q${i}"]`);
                 const questionDiv = input.closest('.mb-4');
@@ -1167,21 +1177,25 @@ if (document.getElementById('section-list')) {
 
                 if (!isAnswered) {
                     allAnswered = false;
+                    unansweredQuestions.push(i + 1);
                     if (questionDiv) {
                         questionDiv.classList.add('border', 'border-red-500', 'bg-red-50', 'rounded-lg', 'p-2');
                     }
-                } else if (answer === 'No' && !input.value) {
-                    validationErrors.push(`Remarks are required for all questions answered as 'No'.`);
+                } else if (answer === 'No' && !input.value.trim()) {
+                    validationErrors.push(`Remarks are required for question ${i + 1} answered as 'No'.`);
                     if (questionDiv) {
                         questionDiv.classList.add('border', 'border-red-500', 'bg-red-50', 'rounded-lg', 'p-2');
                     }
                 }
 
-                const questionLabel = input.parentElement?.querySelector('label.block');
+                const questionLabel = input.parentElement?.previousElementSibling;
                 const questionText = questionLabel?.innerText.replace(/^\d+\.\s/, '').replace(/\s\*$/, '') || '';
-                data.questions.push({ question: questionText, answer, remarks: input.value });
+                data.questions.push({ question: questionText, answer, remarks: input.value.trim() });
             });
-            if (!allAnswered) validationErrors.push("All questions are mandatory. Please answer all questions before saving.");
+            
+            if (!allAnswered) {
+                validationErrors.push(`All questions are mandatory. Please answer questions: ${unansweredQuestions.join(', ')}`);
+            }
         }
 
         if (validationErrors.length > 0) {
@@ -1272,10 +1286,10 @@ const navSendEmail = document.getElementById('nav-send-email');
 if (navSendEmail) {
     navSendEmail.onclick = () => {
         sidebar?.classList.add('-translate-x-full');
-        document.getElementById('section-list')?.classList.add('hidden');
+        ['checklist-container', 'stock-count-section', 'upload-data-section', 'section-content'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+        document.getElementById('photo-section')?.classList.add('hidden');
+        document.getElementById('signature-section')?.classList.add('hidden');
         document.getElementById('send-email-section')?.classList.remove('hidden');
-        document.getElementById('submit-audit')?.classList.add('hidden');
-        document.getElementById('export-excel')?.classList.add('hidden');
     };
 }
 
@@ -1530,8 +1544,9 @@ if (submitStockCountBtn) {
                 const text = await res.text(); let data = {}; try { data = JSON.parse(text); } catch { }
                 if (!res.ok) { showPopup(data.message || 'Failed to submit', 'error'); return; }
                 showPopup('Stock count submitted successfully ✅', 'success');
-                setTimeout(() => document.getElementById('back-to-dashboard')?.click(), 100);
-                openEmailModal('stock-count');
+                
+                // Stay on stock count page and switch to Completed tab
+                document.getElementById('sc-tab-completed')?.click();
             } catch (err) { showPopup('Error submitting: ' + err.message, 'error'); }
         };
     };
@@ -1585,6 +1600,7 @@ function openEmailModal(type) {
             const formData = new FormData();
             formData.append('to_email', toEmail);
             formData.append('attachment', file);
+            formData.append('email_type', type === 'checklist' ? 'checklist' : 'stock-count');
 
             const res = await fetch(`${API_BASE_URL}/api/send-email`, {
                 method: 'POST',
@@ -1604,6 +1620,7 @@ function openEmailModal(type) {
 }
 
 document.getElementById('nav-stock-count').addEventListener('click', () => {
+    // Always load items for Pending tab when Stock Count section opens
     setTimeout(() => loadStockCountItems(), 100);
 });
 
@@ -1633,9 +1650,27 @@ async function loadChecklistHistory() {
             return;
         }
 
-        container.innerHTML = history.map(h => {
+        container.innerHTML = history.map((h, idx) => {
             const pct = Math.round((h.sections_completed / h.sections_total) * 100);
             const barColor = pct === 100 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-400' : 'bg-red-400';
+            const sectionNames = {
+                general_report: 'General Report', stock_reconciliation: 'Stock Reconciliation',
+                observations_on_stacking: 'Observations on Stacking',
+                observations_on_warehouse_operations: 'Observations on WH Operations',
+                observations_on_warehouse_record_keeping: 'Observations on WH Record Keeping',
+                observations_on_wh_infrastructure: 'Observations on WH Infrastructure',
+                observations_on_quality_operation: 'Observations on Quality Operation',
+                checklist_wrt_exchange_circular_mentha_oil: 'Checklist Mentha Oil',
+                checklist_wrt_exchange_circular_metal: 'Checklist Metals',
+                checklist_wrt_exchange_circular_cotton_bales: 'Checklist Cotton Bales',
+                signature: 'Signature', photo: 'Photo'
+            };
+            const cs = h.completion_status || {};
+            const sectionBadges = Object.entries(sectionNames).map(([key, label]) =>
+                `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                    cs[key] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
+                }"><i class="fas ${cs[key] ? 'fa-check-circle' : 'fa-circle'} text-xs"></i>${label}</span>`
+            ).join('');
             return `
                 <div class="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition">
                     <div class="flex items-center justify-between mb-2">
@@ -1643,14 +1678,24 @@ async function loadChecklistHistory() {
                             <div class="font-semibold text-gray-800">${h.warehouse_name}</div>
                             <div class="text-xs text-gray-500">${h.date} • Submitted: ${new Date(h.submitted_at).toLocaleString()}</div>
                         </div>
-                        <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Submitted</span>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Submitted</span>
+                            <button onclick="downloadHistoryExcel('${h.audit_id}')"
+                                class="px-2 py-1 rounded-lg text-xs font-semibold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 flex items-center gap-1">
+                                <i class="fas fa-download"></i> Excel
+                            </button>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 mb-3">
                         <div class="flex-1 bg-gray-200 rounded-full h-2">
                             <div class="${barColor} h-2 rounded-full transition-all" style="width:${pct}%"></div>
                         </div>
                         <span class="text-xs font-semibold text-gray-600">${h.sections_completed}/${h.sections_total}</span>
                     </div>
+                    <button onclick="toggleHistoryDetails('hist-${idx}')" class="text-xs text-indigo-600 hover:underline mb-2 flex items-center gap-1">
+                        <i class="fas fa-chevron-down" id="hist-arrow-${idx}"></i> View Sections
+                    </button>
+                    <div id="hist-${idx}" class="hidden flex flex-wrap gap-1.5 mt-1">${sectionBadges}</div>
                 </div>
             `;
         }).join('');
@@ -1685,17 +1730,37 @@ async function loadStockCountHistory(tab) {
             if (!completed.length) {
                 completedContainer.innerHTML = '<p class="text-gray-400 text-center py-8">No completed stock count for today.</p>';
             } else {
-                completedContainer.innerHTML = completed.map(c => `
+                completedContainer.innerHTML = completed.map((c, idx) => `
                     <div class="bg-white rounded-lg shadow-sm border p-4">
-                        <div class="flex items-center justify-between mb-2">
-                            <div>
-                                <div class="font-semibold text-gray-800">${c.warehouse_name}</div>
-                                <div class="text-xs text-gray-500">${c.date} • Submitted: ${new Date(c.submitted_at).toLocaleString()}</div>
+                        <div class="flex items-center justify-between mb-2 cursor-pointer" onclick="toggleCompletedDetails('completed-${idx}')">
+                            <div class="flex-1">
+                                <div class="font-semibold text-gray-800">Stock Count - ${c.date}</div>
+                                <div class="text-xs text-gray-500">Submitted: ${new Date(c.submitted_at).toLocaleString()}</div>
+                                <div class="text-sm text-gray-600 mt-1">
+                                    <span class="font-semibold text-indigo-600">${c.items_count}</span> items counted
+                                </div>
                             </div>
-                            <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Completed</span>
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Completed</span>
+                                <button onclick="event.stopPropagation(); downloadStockCountExcel('${c.audit_id}')"
+                                    class="px-2 py-1 rounded-lg text-xs font-semibold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 flex items-center gap-1">
+                                    <i class="fas fa-download"></i> Excel
+                                </button>
+                                <i class="fas fa-chevron-down transition-transform" id="completed-arrow-${idx}"></i>
+                            </div>
                         </div>
-                        <div class="text-sm text-gray-600">
-                            <span class="font-semibold text-indigo-600">${c.items_count}</span> items counted
+                        <div id="completed-${idx}" class="hidden mt-3 border-t pt-3">
+                            <div class="text-sm font-semibold text-gray-700 mb-2">Items Counted:</div>
+                            <div class="space-y-2 max-h-64 overflow-y-auto">
+                                ${c.stock_count_data.map(item => `
+                                    <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                                        <div class="font-medium text-gray-800">${item.item_name || 'N/A'}</div>
+                                        <div class="text-xs text-gray-600">Code: ${item.item_code || 'N/A'} ${item.sheet_name ? '• Sheet: ' + item.sheet_name : ''}</div>
+                                        <div class="text-xs text-gray-600">Expected: ${item.qty || 'N/A'} • Counted: ${item.physical_amount || 'N/A'}</div>
+                                        ${item.remarks ? `<div class="text-xs text-gray-500 italic mt-1">Remarks: ${item.remarks}</div>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
                         </div>
                     </div>
                 `).join('');
@@ -1707,17 +1772,37 @@ async function loadStockCountHistory(tab) {
             if (!history.length) {
                 historyContainer.innerHTML = '<p class="text-gray-400 text-center py-8">No history found.</p>';
             } else {
-                historyContainer.innerHTML = history.map(h => `
+                historyContainer.innerHTML = history.map((h, idx) => `
                     <div class="bg-white rounded-lg shadow-sm border p-4 hover:shadow-md transition">
-                        <div class="flex items-center justify-between mb-2">
-                            <div>
-                                <div class="font-semibold text-gray-800">${h.warehouse_name}</div>
-                                <div class="text-xs text-gray-500">${h.date} • Submitted: ${new Date(h.submitted_at).toLocaleString()}</div>
+                        <div class="flex items-center justify-between mb-2 cursor-pointer" onclick="toggleCompletedDetails('history-${idx}')">
+                            <div class="flex-1">
+                                <div class="font-semibold text-gray-800">Stock Count - ${h.date}</div>
+                                <div class="text-xs text-gray-500">Submitted: ${new Date(h.submitted_at).toLocaleString()}</div>
+                                <div class="text-sm text-gray-600 mt-1">
+                                    <span class="font-semibold text-indigo-600">${h.items_count}</span> items counted
+                                </div>
                             </div>
-                            <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Submitted</span>
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Submitted</span>
+                                <button onclick="event.stopPropagation(); downloadStockCountExcel('${h.audit_id}')"
+                                    class="px-2 py-1 rounded-lg text-xs font-semibold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 flex items-center gap-1">
+                                    <i class="fas fa-download"></i> Excel
+                                </button>
+                                <i class="fas fa-chevron-down transition-transform" id="history-arrow-${idx}"></i>
+                            </div>
                         </div>
-                        <div class="text-sm text-gray-600">
-                            <span class="font-semibold text-indigo-600">${h.items_count}</span> items counted
+                        <div id="history-${idx}" class="hidden mt-3 border-t pt-3">
+                            <div class="text-sm font-semibold text-gray-700 mb-2">Items Counted:</div>
+                            <div class="space-y-2 max-h-64 overflow-y-auto">
+                                ${h.stock_count_data.map(item => `
+                                    <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                                        <div class="font-medium text-gray-800">${item.item_name || 'N/A'}</div>
+                                        <div class="text-xs text-gray-600">Code: ${item.item_code || 'N/A'} ${item.sheet_name ? '• Sheet: ' + item.sheet_name : ''}</div>
+                                        <div class="text-xs text-gray-600">Expected: ${item.qty || 'N/A'} • Counted: ${item.physical_amount || 'N/A'}</div>
+                                        ${item.remarks ? `<div class="text-xs text-gray-500 italic mt-1">Remarks: ${item.remarks}</div>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
                         </div>
                     </div>
                 `).join('');
@@ -1727,4 +1812,85 @@ async function loadStockCountHistory(tab) {
         if (tab === 'completed') completedContainer.innerHTML = '<p class="text-red-500 text-center py-8">Error loading.</p>';
         if (tab === 'history') historyContainer.innerHTML = '<p class="text-red-500 text-center py-8">Error loading.</p>';
     }
+}
+
+function toggleHistoryDetails(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    el.classList.toggle('hidden', !isHidden);
+    const idx = id.split('hist-')[1];
+    const arrow = document.getElementById(`hist-arrow-${idx}`);
+    if (arrow) arrow.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+}
+
+function toggleCompletedDetails(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    el.classList.toggle('hidden', !isHidden);
+    const prefix = id.split('-')[0]; // 'completed' or 'history'
+    const idx = id.split('-')[1];
+    const arrow = document.getElementById(`${prefix}-arrow-${idx}`);
+    if (arrow) arrow.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+}
+
+async function downloadHistoryExcel(audit_id) {
+    const token = localStorage.getItem('access_token');
+    if (!token) { showPopup('Please login first.', 'warning'); return; }
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/export-excel-by-id?audit_id=${encodeURIComponent(audit_id)}`, {
+            method: 'GET', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+            let msg = 'Failed to download.';
+            try { msg = (await res.json()).message || msg; } catch {}
+            showPopup(msg, 'error'); return;
+        }
+        const blob = await res.blob();
+        const contentDisposition = res.headers.get('Content-Disposition');
+        let filename = `Audit_${audit_id}.xlsx`;
+        if (contentDisposition) {
+            const matches = /filename\*?=(?:UTF-8'')?([^;]+)/.exec(contentDisposition);
+            if (matches && matches[1]) {
+                filename = decodeURIComponent(matches[1].replace(/['"]/g, ''));
+            }
+        }
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+        showPopup('Download started.', 'success');
+    } catch (err) { showPopup('Error: ' + err.message, 'error'); }
+}
+
+async function downloadStockCountExcel(audit_id) {
+    const token = localStorage.getItem('access_token');
+    if (!token) { showPopup('Please login first.', 'warning'); return; }
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/export-stock-count-excel-by-id?audit_id=${encodeURIComponent(audit_id)}`, {
+            method: 'GET', headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) {
+            let msg = 'Failed to download.';
+            try { msg = (await res.json()).message || msg; } catch {}
+            showPopup(msg, 'error'); return;
+        }
+        const blob = await res.blob();
+        const contentDisposition = res.headers.get('Content-Disposition');
+        let filename = `StockCount_${audit_id}.xlsx`;
+        if (contentDisposition) {
+            const matches = /filename\*?=(?:UTF-8'')?([^;]+)/.exec(contentDisposition);
+            if (matches && matches[1]) {
+                filename = decodeURIComponent(matches[1].replace(/['"]/g, ''));
+            }
+        }
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        window.URL.revokeObjectURL(url);
+        showPopup('Download started.', 'success');
+    } catch (err) { showPopup('Error: ' + err.message, 'error'); }
 }
