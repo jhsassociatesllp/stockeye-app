@@ -1057,30 +1057,61 @@ if (document.getElementById('section-list')) {
                         addLabelButton.disabled = true;
                         
                         // Try browser geolocation first (most accurate) with high accuracy enabled
+                        // navigator.geolocation.getCurrentPosition(
+                        //     async pos => {
+                        //         await fetchAndDrawLocation(pos.coords.latitude, pos.coords.longitude);
+                        //     },
+                        //     async (error) => {
+                        //         // Geolocation denied or failed
+                        //         console.warn('Browser geolocation error:', error.message);
+                                
+                        //         if (error.code === error.PERMISSION_DENIED) {
+                        //             showPopup('Location permission denied. Please enable GPS/Location in your browser settings for accurate location.', 'warning');
+                        //         } else if (error.code === error.POSITION_UNAVAILABLE) {
+                        //             showPopup('GPS position unavailable. Using approximate IP-based location.', 'warning');
+                        //         } else if (error.code === error.TIMEOUT) {
+                        //             showPopup('GPS timeout. Using approximate IP-based location.', 'warning');
+                        //         }
+                                
+                        //         // Use IP-based location as fallback (less accurate)
+                        //         console.warn('Using IP-based location (less accurate)');
+                        //         await fallbackIpLocation();
+                        //     },
+                        //     { 
+                        //         enableHighAccuracy: true,  // Request high accuracy GPS
+                        //         timeout: 10000,            // Wait up to 10 seconds for GPS
+                        //         maximumAge: 0              // Don't use cached position
+                        //     }
+                        // );
+
                         navigator.geolocation.getCurrentPosition(
-                            async pos => {
-                                await fetchAndDrawLocation(pos.coords.latitude, pos.coords.longitude);
-                            },
-                            async (error) => {
-                                // Geolocation denied or failed
-                                console.warn('Browser geolocation error:', error.message);
-                                
-                                if (error.code === error.PERMISSION_DENIED) {
-                                    showPopup('Location permission denied. Please enable GPS/Location in your browser settings for accurate location.', 'warning');
-                                } else if (error.code === error.POSITION_UNAVAILABLE) {
-                                    showPopup('GPS position unavailable. Using approximate IP-based location.', 'warning');
-                                } else if (error.code === error.TIMEOUT) {
-                                    showPopup('GPS timeout. Using approximate IP-based location.', 'warning');
+                            async (pos) => {
+                                const lat = pos.coords.latitude;
+                                const lon = pos.coords.longitude;
+                                const accuracy = pos.coords.accuracy;
+
+                                console.log("Accuracy:", accuracy);
+
+                                if (accuracy > 50) {
+                                    showPopup(
+                                        `Weak GPS signal. Accuracy: ${accuracy}m`,
+                                        "warning"
+                                    );
+                                    return;
                                 }
-                                
-                                // Use IP-based location as fallback (less accurate)
-                                console.warn('Using IP-based location (less accurate)');
-                                await fallbackIpLocation();
+
+                                await fetchAndDrawLocation(lat, lon);
                             },
-                            { 
-                                enableHighAccuracy: true,  // Request high accuracy GPS
-                                timeout: 10000,            // Wait up to 10 seconds for GPS
-                                maximumAge: 0              // Don't use cached position
+                            (err) => {
+                                showPopup(
+                                    "GPS unavailable. Please enable location.",
+                                    "error"
+                                );
+                            },
+                            {
+                                enableHighAccuracy: true,
+                                timeout: 30000,
+                                maximumAge: 0
                             }
                         );
                     } else {
