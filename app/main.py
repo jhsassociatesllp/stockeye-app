@@ -634,7 +634,6 @@ async def send_email(
         logger.error(f"Send-email error: {e}")
         return JSONResponse({"message": f"Failed to send email: {str(e)}", "success": False}, status_code=500)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 #  UPLOAD ITEM MASTER  –  NEW JSON endpoint (called by the wizard)
 # ─────────────────────────────────────────────────────────────────────────────
