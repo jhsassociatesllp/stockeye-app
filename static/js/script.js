@@ -1052,21 +1052,41 @@ if (document.getElementById('section-list')) {
                     const isSecure = window.isSecureContext;
 
                     if (isSecure && "geolocation" in navigator) {
-                        // Try browser geolocation first (most accurate)
+                        // Show loading message
+                        addLabelButton.textContent = 'Getting GPS location...';
+                        addLabelButton.disabled = true;
+                        
+                        // Try browser geolocation first (most accurate) with high accuracy enabled
                         navigator.geolocation.getCurrentPosition(
                             async pos => {
                                 await fetchAndDrawLocation(pos.coords.latitude, pos.coords.longitude);
                             },
                             async (error) => {
-                                // Geolocation denied or failed → use IP-based location via backend
-                                console.warn('Browser geolocation unavailable, using IP-based location');
+                                // Geolocation denied or failed
+                                console.warn('Browser geolocation error:', error.message);
+                                
+                                if (error.code === error.PERMISSION_DENIED) {
+                                    showPopup('Location permission denied. Please enable GPS/Location in your browser settings for accurate location.', 'warning');
+                                } else if (error.code === error.POSITION_UNAVAILABLE) {
+                                    showPopup('GPS position unavailable. Using approximate IP-based location.', 'warning');
+                                } else if (error.code === error.TIMEOUT) {
+                                    showPopup('GPS timeout. Using approximate IP-based location.', 'warning');
+                                }
+                                
+                                // Use IP-based location as fallback (less accurate)
+                                console.warn('Using IP-based location (less accurate)');
                                 await fallbackIpLocation();
                             },
-                            { timeout: 5000 }
+                            { 
+                                enableHighAccuracy: true,  // Request high accuracy GPS
+                                timeout: 10000,            // Wait up to 10 seconds for GPS
+                                maximumAge: 0              // Don't use cached position
+                            }
                         );
                     } else {
                         // HTTP context or geolocation not available → use backend IP geolocation
                         console.log('Using backend IP geolocation (HTTP context or API unavailable)');
+                        showPopup('Using approximate IP-based location. For accurate GPS, enable location permissions.', 'warning');
                         await fallbackIpLocation();
                     }
                 };
