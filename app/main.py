@@ -506,39 +506,80 @@ async def generate_checklist_excel_bytes(emp_id: str, audit_data: dict) -> bytes
     ws.column_dimensions["A"].width = 60
 
     # Photo
+    # Photo section - support both single photo (legacy) and multiple photos
     ws = wb.create_sheet("Photo")
     photo_section = sections.get("photo", {})
-    photo = photo_section.get("photo")
-    photo_file_id = photo_section.get("photo_file_id")
-    maps_url = photo_section.get("maps_url")
-    row = 1
-    if maps_url:
-        ws["A1"] = "Maps URL"; ws["B1"] = maps_url; row += 2
-    photo_bytes = None
-    if photo_file_id:
-        try:
-            from bson import ObjectId as _ObjId
-            grid_out = fs.get(_ObjId(photo_file_id))
-            photo_bytes = grid_out.read()
-        except Exception as gfs_err:
-            logger.warning(f"GridFS photo fetch failed for export: {gfs_err}")
-    elif photo:
-        try:
-            img_data = re.sub("^data:image/.+;base64,", "", photo)
-            photo_bytes = base64.b64decode(img_data)
-        except Exception as b64_err:
-            logger.warning(f"Base64 photo decode failed for export: {b64_err}")
-    if photo_bytes:
-        try:
-            img = Image(io.BytesIO(photo_bytes)); img.width = 350; img.height = 250
-            ws.add_image(img, f"A{row}")
-            ws[f"A{row + 20}"] = "Photo captured during the audit"
-        except Exception as e:
-            ws[f"A{row}"] = f"Unable to embed photo: {e}"
+    
+    # Check if it's the new multi-photo format
+    photos_list = photo_section.get("photos", [])
+    
+    # Handle legacy single photo format
+    if not photos_list and photo_section.get("photo"):
+        photos_list = [{
+            "photo": photo_section.get("photo"),
+            "maps_url": photo_section.get("maps_url", ""),
+            "timestamp": datetime.now().isoformat(),
+            "location_text": "Legacy photo"
+        }]
+    
+    if photos_list:
+        # Multi-photo format
+        ws.append(["Photo #", "Timestamp", "Location", "Google Maps Link"])
+        ws.column_dimensions["A"].width = 15
+        ws.column_dimensions["B"].width = 60  # Wide column for images
+        ws.column_dimensions["C"].width = 50
+        ws.column_dimensions["D"].width = 50
+        
+        for idx, photo_item in enumerate(photos_list, 1):
+            timestamp = photo_item.get("timestamp", "N/A")
+            location = photo_item.get("location_text", "N/A")
+            maps_url = photo_item.get("maps_url", "")
+            
+            # Add data row
+            data_row = idx + 1
+            ws[f"A{data_row}"] = f"Photo {idx}"
+            ws[f"C{data_row}"] = location
+            ws[f"D{data_row}"] = maps_url if maps_url else "N/A"
+            
+            # Try to embed the image
+            try:
+                photo_data = photo_item.get("photo", "")
+                if photo_data:
+                    # Handle base64 encoded image
+                    if photo_data.startswith("data:image"):
+                        img_data = re.sub("^data:image/.+;base64,", "", photo_data)
+                        photo_bytes = base64.b64decode(img_data)
+                    else:
+                        photo_bytes = base64.b64decode(photo_data)
+                    
+                    # Create PIL image and resize if needed
+                    from PIL import Image as PILImage
+                    pil_img = PILImage.open(io.BytesIO(photo_bytes))
+                    
+                    # Resize to reasonable size for Excel
+                    max_size = (400, 300)
+                    pil_img.thumbnail(max_size, PILImage.Resampling.LANCZOS)
+                    
+                    # Save to bytes
+                    img_buf = io.BytesIO()
+                    pil_img.save(img_buf, format='PNG')
+                    img_buf.seek(0)
+                    
+                    # Create Excel image and add to worksheet
+                    excel_img = Image(img_buf)
+                    excel_img.width = 400
+                    excel_img.height = 300
+                    
+                    # Position in column B
+                    ws.add_image(excel_img, f"B{data_row}")
+                    ws.row_dimensions[data_row].height = 225  # Adjust row height for image
+                    
+            except Exception as e:
+                logger.warning(f"Failed to embed photo {idx}: {e}")
+                ws[f"B{data_row}"] = f"[Image embedding failed: {str(e)}]"
     else:
-        ws[f"A{row}"] = "Photo not found."
-    ws.column_dimensions["A"].width = 60
-    ws.column_dimensions["B"].width = 40
+        ws.append(["No photos captured"])
+        ws.column_dimensions["A"].width = 30
 
     out = io.BytesIO()
     wb.save(out)

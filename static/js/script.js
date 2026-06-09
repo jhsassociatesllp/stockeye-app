@@ -37,6 +37,13 @@ document.addEventListener("DOMContentLoaded", () => {
             checklistTabCurrent.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
             checklistHistoryContent.classList.remove('hidden');
             checklistCurrentContent.classList.add('hidden');
+            
+            // Hide photo section if visible
+            const photoSection = document.getElementById('photo-section');
+            if (photoSection && !photoSection.classList.contains('hidden')) {
+                photoSection.classList.add('hidden');
+            }
+            
             loadChecklistHistory();
         });
     }
@@ -76,6 +83,13 @@ document.addEventListener("DOMContentLoaded", () => {
             scHistoryContent.classList.remove('hidden');
             scPendingContent.classList.add('hidden');
             scCompletedContent.classList.add('hidden');
+            
+            // Hide photo section if visible
+            const photoSection = document.getElementById('photo-section');
+            if (photoSection && !photoSection.classList.contains('hidden')) {
+                photoSection.classList.add('hidden');
+            }
+            
             loadStockCountHistory('history');
         });
     }
@@ -817,193 +831,318 @@ if (document.getElementById('section-list')) {
                     } catch (err) { showPopup('Error: ' + err.message); }
                 };
             } else if (section === 'photo') {
+                // Hide form, show photo section
                 const sectionForm = document.getElementById('section-form');
                 if (sectionForm) sectionForm.classList.add('hidden');
-                let mapsUrl = "";
-                let photoImageData = null; // base image before geotag overlay
-
                 document.getElementById('photo-section').classList.remove('hidden');
                 document.getElementById('signature-section').classList.add('hidden');
-
+                
+                // Initialize variables
+                let photoGalleryData = [];  // Array of {photo, maps_url, timestamp, location_text}
+                let currentPhotoData = null;
+                let currentMapsUrl = '';
+                let currentLocationText = '';
+                
                 const video = document.getElementById('video');
                 const canvas = document.getElementById('photo-canvas');
                 const ctx = canvas.getContext('2d');
-                const takePhotoButton = document.getElementById('take-photo');
-                const retakeButton = document.getElementById('retake-photo');
-                const saveButton = document.getElementById('save-photo');
-
-                let addLabelButton = document.getElementById('add-label');
-                if (!addLabelButton) {
-                    addLabelButton = document.createElement('button');
-                    addLabelButton.id = 'add-label';
-                    addLabelButton.textContent = 'Add Location Label';
-                    addLabelButton.className = 'hidden bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600';
-                    document.querySelector('#photo-section .flex').appendChild(addLabelButton);
-                }
-                let mapLinkOverlay = document.getElementById('map-overlay');
-                if (!mapLinkOverlay) {
-                    mapLinkOverlay = document.createElement('a');
-                    mapLinkOverlay.id = 'map-overlay';
-                    mapLinkOverlay.target = '_blank';
-                    Object.assign(mapLinkOverlay.style, { position: 'absolute', bottom: '45px', left: '10px', width: '380px', height: '20px', opacity: '0', cursor: 'pointer', zIndex: '5' });
-                    document.getElementById('photo-section').appendChild(mapLinkOverlay);
-                }
-                mapLinkOverlay.style.display = 'none';
-
-                // ── Determine if live camera is available ──
-                const hasLiveCamera = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-
-                // ── Hidden file input for HTTP fallback ──
-                let fileInput = document.getElementById('photo-file-input');
-                if (fileInput) fileInput.remove();
-                fileInput = document.createElement('input');
-                fileInput.type = 'file';
-                fileInput.id = 'photo-file-input';
-                fileInput.accept = 'image/*';
-                fileInput.capture = 'environment';
-                fileInput.style.display = 'none';
-                document.body.appendChild(fileInput);
-
-                const resetToInitial = () => {
-                    photoImageData = null; mapsUrl = '';
-                    mapLinkOverlay.style.display = 'none';
-                    takePhotoButton.classList.remove('hidden');
-                    retakeButton.classList.add('hidden');
-                    addLabelButton.classList.add('hidden');
-                    saveButton.classList.add('hidden');
-                    addLabelButton.textContent = 'Add Location Label';
-                    addLabelButton.disabled = false;
-                };
-
-                const showImageOnCanvas = (img) => {
-                    const maxW = 640;
-                    const scale = img.width > maxW ? maxW / img.width : 1;
-                    canvas.width = img.width * scale;
-                    canvas.height = img.height * scale;
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    photoImageData = canvas.toDataURL('image/png');
-                    takePhotoButton.classList.add('hidden');
-                    retakeButton.classList.remove('hidden');
-                    addLabelButton.classList.remove('hidden');
-                    saveButton.classList.add('hidden');
-                    addLabelButton.textContent = 'Add Location Label';
-                    addLabelButton.disabled = false;
-                    mapLinkOverlay.style.display = 'none';
-                };
-
-                if (hasLiveCamera) {
-                    // ── LIVE CAMERA MODE ──
-                    video.classList.remove('hidden');
-                    canvas.classList.add('hidden');
-                    takePhotoButton.disabled = true;
-                    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } })
-                        .then(stream => {
-                            video.srcObject = stream;
-                            video.onloadedmetadata = () => video.play().then(() => { takePhotoButton.disabled = false; });
-                        })
-                        .catch(() => {
-                            // Camera permission denied — switch to file mode
-                            video.classList.add('hidden');
-                            canvas.classList.remove('hidden');
-                            takePhotoButton.disabled = false;
-                        });
-
-                    takePhotoButton.onclick = () => {
-                        if (video.videoWidth === 0 || video.videoHeight === 0) {
-                            showPopup('Camera not ready yet. Please wait.'); return;
+                const takePhotoBtn = document.getElementById('take-photo');
+                const uploadBtn = document.getElementById('upload-photo-btn');
+                const fileInput = document.getElementById('photo-file-input');
+                const retakeBtn = document.getElementById('retake-photo');
+                const addLabelBtn = document.getElementById('add-geo-label');
+                const addToGalleryBtn = document.getElementById('add-to-gallery-btn');
+                const addLocationToAllBtn = document.getElementById('add-location-to-all-btn');
+                const saveAllBtn = document.getElementById('save-photo');
+                const gallery = document.getElementById('photo-gallery');
+                
+                // Load existing photos
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/get-section/photo`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    console.log('Load photo response:', data);
+                    if (res.ok && data.success && data.data.section_data) {
+                        const savedData = data.data.section_data;
+                        console.log('Saved photo data:', savedData);
+                        // Handle both old (single photo) and new (multiple photos) format
+                        if (savedData.photos && Array.isArray(savedData.photos)) {
+                            photoGalleryData = savedData.photos.map(p => ({
+                                photo: p.photo,
+                                maps_url: p.maps_url || '',
+                                timestamp: p.timestamp || new Date().toISOString(),
+                                location_text: p.location_text || '',
+                                needs_geotag: false  // Always false when loading from DB
+                            }));
+                            console.log('Loaded photos count:', photoGalleryData.length);
+                        } else if (savedData.photo) {
+                            // Migrate old format
+                            photoGalleryData = [{
+                                photo: savedData.photo,
+                                maps_url: savedData.maps_url || '',
+                                timestamp: new Date().toISOString(),
+                                location_text: 'Legacy photo',
+                                needs_geotag: false
+                            }];
+                            console.log('Migrated old photo format');
                         }
-                        const img = new Image();
-                        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        // Stop stream after snapshot
-                        if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
-                        video.classList.add('hidden'); canvas.classList.remove('hidden');
-                        photoImageData = canvas.toDataURL('image/png');
-                        takePhotoButton.classList.add('hidden');
-                        retakeButton.classList.remove('hidden');
-                        addLabelButton.classList.remove('hidden');
-                        saveButton.classList.add('hidden');
-                        addLabelButton.textContent = 'Add Location Label';
-                        addLabelButton.disabled = false;
-                        mapLinkOverlay.style.display = 'none';
-                    };
-
-                    retakeButton.onclick = () => {
-                        if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
-                        resetToInitial();
-                        takePhotoButton.disabled = true;
-                        video.classList.remove('hidden'); canvas.classList.add('hidden');
-                        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } })
-                            .then(stream => {
-                                video.srcObject = stream;
-                                video.onloadedmetadata = () => video.play().then(() => { takePhotoButton.disabled = false; });
-                            })
-                            .catch(() => { video.classList.add('hidden'); canvas.classList.remove('hidden'); takePhotoButton.disabled = false; });
-                    };
-                } else {
-                    // ── FILE INPUT FALLBACK (HTTP production) ──
+                        renderGallery();
+                    } else {
+                        console.log('No saved photos found');
+                    }
+                } catch (err) {
+                    console.log('Error loading photos:', err);
+                }
+                
+                // Render gallery
+                const renderGallery = () => {
+                    console.log('Rendering gallery with', photoGalleryData.length, 'photos');
+                    if (photoGalleryData.length === 0) {
+                        gallery.innerHTML = '<p class="col-span-full text-center text-gray-500 py-8 text-sm">No photos yet. Capture or upload photos below.</p>';
+                        addLocationToAllBtn.classList.add('hidden');
+                        return;
+                    }
+                    
+                    // Check if any photos need geo-tagging
+                    const needsGeoTag = photoGalleryData.some(p => p.needs_geotag);
+                    if (needsGeoTag) {
+                        addLocationToAllBtn.classList.remove('hidden');
+                    } else {
+                        addLocationToAllBtn.classList.add('hidden');
+                    }
+                    
+                    gallery.innerHTML = photoGalleryData.map((p, idx) => `
+                        <div class="relative border rounded-lg overflow-hidden bg-white shadow-md hover:shadow-lg transition ${p.needs_geotag ? 'ring-2 ring-yellow-400' : ''}">
+                            <img src="${p.photo}" class="w-full h-40 object-cover cursor-pointer" onclick="viewFullPhoto(${idx})">
+                            ${p.needs_geotag ? '<div class="absolute top-2 left-2 bg-yellow-500 text-white text-xs px-2 py-1 rounded-full"><i class="fas fa-exclamation-triangle"></i> No location</div>' : ''}
+                            <div class="p-2">
+                                <div class="text-xs text-gray-600 mb-1">
+                                    <i class="fas fa-clock mr-1"></i>${new Date(p.timestamp).toLocaleString()}
+                                </div>
+                                ${p.maps_url ? `
+                                    <a href="${p.maps_url}" target="_blank" class="text-xs text-blue-600 hover:underline block truncate">
+                                        <i class="fas fa-map-marker-alt mr-1"></i>View on Maps
+                                    </a>
+                                ` : '<span class="text-xs text-gray-400">No location</span>'}
+                            </div>
+                            <button onclick="deletePhotoFromGallery(${idx})" 
+                                class="absolute top-2 right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center hover:bg-red-600 shadow-lg">
+                                <i class="fas fa-trash text-xs"></i>
+                            </button>
+                        </div>
+                    `).join('');
+                    console.log('Gallery HTML updated');
+                };
+                
+                // Delete photo
+                window.deletePhotoFromGallery = (idx) => {
+                    if (confirm('Delete this photo?')) {
+                        photoGalleryData.splice(idx, 1);
+                        renderGallery();
+                        showPopup('Photo deleted', 'success');
+                    }
+                };
+                
+                // View full photo
+                window.viewFullPhoto = (idx) => {
+                    const p = photoGalleryData[idx];
+                    const modal = document.createElement('div');
+                    modal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4';
+                    modal.innerHTML = `
+                        <div class="relative max-w-4xl w-full bg-white rounded-lg overflow-hidden">
+                            <button onclick="this.parentElement.parentElement.remove()" 
+                                class="absolute top-4 right-4 bg-white text-gray-800 rounded-full w-10 h-10 flex items-center justify-center hover:bg-gray-200 z-10 shadow-lg">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            <img src="${p.photo}" class="w-full">
+                            <div class="p-4 bg-gray-50">
+                                <p class="text-sm text-gray-600"><i class="fas fa-clock mr-2"></i>${new Date(p.timestamp).toLocaleString()}</p>
+                                ${p.location_text ? `<p class="text-sm text-gray-600 mt-1"><i class="fas fa-map-marker-alt mr-2"></i>${p.location_text}</p>` : ''}
+                                ${p.maps_url ? `<a href="${p.maps_url}" target="_blank" class="text-sm text-blue-600 hover:underline mt-2 inline-block">Open in Google Maps →</a>` : ''}
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+                    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+                };
+                
+                // Reset canvas
+                const resetCanvas = () => {
+                    currentPhotoData = null;
+                    currentMapsUrl = '';
+                    currentLocationText = '';
+                    canvas.width = 400;
+                    canvas.height = 300;
+                    ctx.fillStyle = '#1f2937';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.fillStyle = '#9ca3af';
+                    ctx.font = '16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('📷 Capture or upload a photo', canvas.width / 2, canvas.height / 2);
+                    
+                    takePhotoBtn.classList.remove('hidden');
+                    uploadBtn.classList.remove('hidden');
+                    retakeBtn.classList.add('hidden');
+                    addLabelBtn.classList.add('hidden');
+                    addToGalleryBtn.classList.add('hidden');
                     video.classList.add('hidden');
                     canvas.classList.remove('hidden');
-                    canvas.width = 400; canvas.height = 300;
-                    ctx.fillStyle = '#1f2937'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    ctx.fillStyle = '#9ca3af'; ctx.font = '16px Arial';
-                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                    ctx.fillText('📷 Tap "Take Photo" to open camera', canvas.width / 2, canvas.height / 2);
-                    takePhotoButton.disabled = false;
-
-                    takePhotoButton.onclick = () => { fileInput.value = ''; fileInput.click(); };
-
-                    retakeButton.onclick = () => {
-                        resetToInitial();
-                        canvas.width = 400; canvas.height = 300;
-                        ctx.fillStyle = '#1f2937'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-                        ctx.fillStyle = '#9ca3af'; ctx.font = '16px Arial';
-                        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                        ctx.fillText('📷 Tap "Take Photo" to open camera', canvas.width / 2, canvas.height / 2);
-                    };
-                }
-
-                // ── File input handler (shared — used by fallback and retake) ──
-                fileInput.onchange = (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    const img = new Image();
-                    img.onload = () => showImageOnCanvas(img);
-                    img.src = URL.createObjectURL(file);
+                    
+                    // Stop any active camera stream
+                    if (video.srcObject) {
+                        video.srcObject.getTracks().forEach(t => t.stop());
+                        video.srcObject = null;
+                    }
                 };
+                
+                resetCanvas();
+                
+                // Take photo logic
+                let originalTakePhotoHandler = null;
+                const initializeTakePhoto = () => {
+                    takePhotoBtn.onclick = () => {
+                        if (navigator.mediaDevices && window.isSecureContext) {
+                            video.classList.remove('hidden');
+                            canvas.classList.add('hidden');
+                            takePhotoBtn.innerHTML = '<i class="fas fa-camera"></i> Capture';
+                            
+                            navigator.mediaDevices.getUserMedia({ 
+                                video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } }
+                            }).then(stream => {
+                                video.srcObject = stream;
+                                video.play();
+                                
+                                takePhotoBtn.onclick = () => {
+                                    canvas.width = video.videoWidth;
+                                    canvas.height = video.videoHeight;
+                                    ctx.drawImage(video, 0, 0);
+                                    currentPhotoData = canvas.toDataURL('image/png');
+                                    
+                                    // Stop camera
+                                    video.srcObject.getTracks().forEach(t => t.stop());
+                                    video.srcObject = null;
+                                    video.classList.add('hidden');
+                                    canvas.classList.remove('hidden');
+                                    
+                                    takePhotoBtn.classList.add('hidden');
+                                    uploadBtn.classList.add('hidden');
+                                    retakeBtn.classList.remove('hidden');
+                                    addLabelBtn.classList.remove('hidden');
+                                };
+                            }).catch(() => {
+                                showPopup('Camera access denied. Use upload instead.', 'warning');
+                                resetCanvas();
+                            });
+                        } else {
+                            fileInput.click();
+                        }
+                    };
+                };
+                
+                initializeTakePhoto();
+                
+                // Upload photo
+                uploadBtn.onclick = () => fileInput.click();
+                
+                fileInput.onchange = async (e) => {
+                    const files = Array.from(e.target.files);
+                    if (files.length === 0) return;
+                    
+                    showPopup(`Processing ${files.length} photo(s)...`, 'success');
+                    
+                    // Process all files and add to gallery WITHOUT geo-tags first
+                    for (const file of files) {
+                        await new Promise((resolve) => {
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                                const img = new Image();
+                                img.onload = () => {
+                                    const maxW = 640;
+                                    const scale = img.width > maxW ? maxW / img.width : 1;
+                                    const tempCanvas = document.createElement('canvas');
+                                    tempCanvas.width = img.width * scale;
+                                    tempCanvas.height = img.height * scale;
+                                    const tempCtx = tempCanvas.getContext('2d');
+                                    tempCtx.drawImage(img, 0, 0, tempCanvas.width, tempCanvas.height);
+                                    
+                                    // Add to gallery without geo-tag
+                                    photoGalleryData.push({
+                                        photo: tempCanvas.toDataURL('image/png'),
+                                        maps_url: '',
+                                        timestamp: new Date().toISOString(),
+                                        location_text: '',
+                                        needs_geotag: true  // Flag to indicate it needs geo-tagging
+                                    });
+                                    resolve();
+                                };
+                                img.src = evt.target.result;
+                            };
+                            reader.readAsDataURL(file);
+                        });
+                    }
+                    
+                    renderGallery();
+                    fileInput.value = '';  // Reset input
+                    
+                    // Show the "Add Location to All" button
+                    addLocationToAllBtn.classList.remove('hidden');
+                    showPopup(`${files.length} photo(s) uploaded! Click "Add Location to All" to geo-tag them.`, 'success');
+                };
+                
+                // Retake
+                retakeBtn.onclick = () => {
+                    if (video.srcObject) {
+                        video.srcObject.getTracks().forEach(t => t.stop());
+                    }
+                    resetCanvas();
+                    initializeTakePhoto();
+                };
+                
+                // Add geo label - Uses existing geo-tagging logic
+                addLabelBtn.onclick = async () => {
+                    addLabelBtn.disabled = true;
+                    addLabelBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Getting location...';
 
-                // ── Geo-tagging ──
-                addLabelButton.onclick = async () => {
-                    addLabelButton.textContent = 'Fetching location...';
-                    addLabelButton.disabled = true;
-
-                    const drawGeoTag = (lat, lon, address, mUrl) => {
-                        mapsUrl = mUrl;
-                        if (!photoImageData) return;
+                    const drawGeoTag = (lat, lon, plusCode, mapsUrlParam) => {
                         const base = new Image();
                         base.onload = () => {
-                            ctx.drawImage(base, 0, 0, canvas.width, canvas.height);
+                            canvas.width = base.width;
+                            canvas.height = base.height;
+                            ctx.drawImage(base, 0, 0);
+                            
                             const timestamp = new Date().toLocaleString();
                             const labelLines = [
-                                `📍 ${parseFloat(lat).toFixed(5)}, ${parseFloat(lon).toFixed(5)}`,
-                                `🏠 ${address}`,
-                                `🌍 ${mUrl || 'Maps URL unavailable'}`,
+                                `📍 ${lat.toFixed(6)}, ${lon.toFixed(6)}`,
+                                `📮 ${plusCode}`,
+                                `🌍 ${mapsUrlParam || 'Maps URL unavailable'}`,
                                 `🕒 ${timestamp}`
                             ];
+                            
                             const boxHeight = 110;
                             ctx.fillStyle = 'rgba(0,0,0,0.65)';
                             ctx.fillRect(0, canvas.height - boxHeight, canvas.width, boxHeight);
-                            ctx.fillStyle = 'white'; ctx.font = '14px Arial';
-                            ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+                            ctx.fillStyle = 'white';
+                            ctx.font = '14px Arial';
+                            ctx.textAlign = 'left';
+                            ctx.textBaseline = 'top';
+                            
                             const startY = canvas.height - boxHeight + 10;
                             labelLines.forEach((line, i) => {
                                 ctx.fillText(line.length > 70 ? line.slice(0, 67) + '...' : line, 10, startY + i * 23);
                             });
-                            if (mUrl) { mapLinkOverlay.href = mUrl; mapLinkOverlay.style.display = 'block'; }
-                            addLabelButton.textContent = 'Label Added ✅';
-                            saveButton.classList.remove('hidden');
+                            
+                            currentMapsUrl = mapsUrlParam;
+                            currentLocationText = plusCode;
+                            currentPhotoData = canvas.toDataURL('image/png');
+                            
+                            addLabelBtn.classList.add('hidden');
+                            addToGalleryBtn.classList.remove('hidden');
+                            addLabelBtn.disabled = false;
+                            addLabelBtn.innerHTML = '<i class="fas fa-map-marker-alt"></i> Add Location';
                         };
-                        base.src = photoImageData;
+                        base.src = currentPhotoData;
                     };
 
                     const fetchAndDrawLocation = async (lat, lon) => {
@@ -1014,134 +1153,302 @@ if (document.getElementById('section-list')) {
                             const data = await res.json();
                             drawGeoTag(lat, lon, data.plus_code || 'Address not found', data.maps_url || '');
                         } catch (err) {
-                            console.warn('Location API failed, will attempt IP-based location');
+                            console.warn('Location API failed');
                             drawGeoTag(lat, lon, 'Location unavailable', '');
                         }
                     };
-
+                    
                     const fallbackIpLocation = async () => {
-                        // Use backend proxy to avoid CORS issues — this is the KEY FIX
                         try {
                             const res = await fetch(`${API_BASE_URL}/api/get-ip-location`, {
                                 signal: AbortSignal.timeout(8000)
                             });
-
-                            if (!res.ok) {
-                                throw new Error('Backend IP geolocation failed');
-                            }
-
+                            
+                            if (!res.ok) throw new Error('Backend IP geolocation failed');
+                            
                             const data = await res.json();
-
                             if (!data.success || !data.latitude || !data.longitude) {
                                 throw new Error('No location data');
                             }
-
+                            
                             await fetchAndDrawLocation(data.latitude, data.longitude);
-                            return;
                         } catch (err) {
                             console.log("Fallback IP location failed: " + err);
-                            // Still let user save without geotag
-                            showPopup('Could not get location. YoWu can still save the photo.', 'warning');
-                            addLabelButton.textContent = 'Add Location Label';
-                            addLabelButton.disabled = false;
-                            saveButton.classList.remove('hidden');
+                            showPopup('Could not get location. You can still add the photo.', 'warning');
+                            addLabelBtn.innerHTML = '<i class="fas fa-map-marker-alt"></i> Add Location';
+                            addLabelBtn.disabled = false;
+                            addToGalleryBtn.classList.remove('hidden');
                         }
                     };
 
                     /// Check if secure context (HTTPS) - required for geolocation API
                     const isSecure = window.isSecureContext;
 
-                    if (isSecure && "geolocation" in navigator) {
-                        // Show loading message
-                        addLabelButton.textContent = 'Getting GPS location...';
-                        addLabelButton.disabled = true;
-                        
-                        // Try browser geolocation first (most accurate) with high accuracy enabled
-                        // navigator.geolocation.getCurrentPosition(
-                        //     async pos => {
-                        //         await fetchAndDrawLocation(pos.coords.latitude, pos.coords.longitude);
-                        //     },
-                        //     async (error) => {
-                        //         // Geolocation denied or failed
-                        //         console.warn('Browser geolocation error:', error.message);
-                                
-                        //         if (error.code === error.PERMISSION_DENIED) {
-                        //             showPopup('Location permission denied. Please enable GPS/Location in your browser settings for accurate location.', 'warning');
-                        //         } else if (error.code === error.POSITION_UNAVAILABLE) {
-                        //             showPopup('GPS position unavailable. Using approximate IP-based location.', 'warning');
-                        //         } else if (error.code === error.TIMEOUT) {
-                        //             showPopup('GPS timeout. Using approximate IP-based location.', 'warning');
-                        //         }
-                                
-                        //         // Use IP-based location as fallback (less accurate)
-                        //         console.warn('Using IP-based location (less accurate)');
-                        //         await fallbackIpLocation();
-                        //     },
-                        //     { 
-                        //         enableHighAccuracy: true,  // Request high accuracy GPS
-                        //         timeout: 10000,            // Wait up to 10 seconds for GPS
-                        //         maximumAge: 0              // Don't use cached position
-                        //     }
-                        // );
+                    console.log("Secure:", window.isSecureContext);
+                    console.log("Protocol:", window.location.protocol);
+                    console.log("Host:", window.location.host);
+                    
 
+                    if (isSecure && "geolocation" in navigator) {
                         navigator.geolocation.getCurrentPosition(
                             async (pos) => {
-                                const lat = pos.coords.latitude;
-                                const lon = pos.coords.longitude;
-                                const accuracy = pos.coords.accuracy;
-
-                                console.log("Accuracy:", accuracy);
-
-                                if (accuracy > 50) {
-                                    showPopup(
-                                        `Weak GPS signal. Accuracy: ${accuracy}m`,
-                                        "warning"
-                                    );
-                                    return;
-                                }
-
-                                await fetchAndDrawLocation(lat, lon);
+                                await fetchAndDrawLocation(pos.coords.latitude, pos.coords.longitude);
                             },
-                            (err) => {
-                                showPopup(
-                                    "GPS unavailable. Please enable location.",
-                                    "error"
-                                );
+                            async (err) => {
+                                console.warn('Browser geolocation error:', err.message);
+                                
+                                if (err.code === err.PERMISSION_DENIED) {
+                                    showPopup('Location permission denied. Enable GPS for accurate location.', 'warning');
+                                } else if (err.code === err.POSITION_UNAVAILABLE) {
+                                    showPopup('GPS unavailable. Using approximate location.', 'warning');
+                                } else if (err.code === err.TIMEOUT) {
+                                    showPopup('GPS timeout. Using approximate location.', 'warning');
+                                }
+                                
+                                await fallbackIpLocation();
                             },
                             {
                                 enableHighAccuracy: true,
-                                timeout: 30000,
+                                timeout: 10000,
                                 maximumAge: 0
                             }
                         );
                     } else {
-                        // HTTP context or geolocation not available → use backend IP geolocation
-                        console.log('Using backend IP geolocation (HTTP context or API unavailable)');
-                        showPopup('Using approximate IP-based location. For accurate GPS, enable location permissions.', 'warning');
+                        console.log('Using backend IP geolocation');
+                        showPopup('Using approximate location. Enable location for GPS.', 'warning');
                         await fallbackIpLocation();
                     }
                 };
 
-                // ── Save photo ──
-                saveButton.onclick = async () => {
-                    const token = localStorage.getItem('access_token');
-                    const dataUrl = canvas.toDataURL('image/png');
-                    const date = new Date().toISOString().split('T')[0];
+                // Add to gallery
+                addToGalleryBtn.onclick = () => {
+                    if (!currentPhotoData) {
+                        showPopup('No photo to add', 'warning');
+                        return;
+                    }
+                    photoGalleryData.push({
+                        photo: currentPhotoData,
+                        maps_url: currentMapsUrl,
+                        timestamp: new Date().toISOString(),
+                        location_text: currentLocationText,
+                        needs_geotag: false
+                    });
+                    console.log('Photo added. Total photos:', photoGalleryData.length);
+                    renderGallery();
+                    resetCanvas();
+                    initializeTakePhoto();
+                    showPopup(`Photo added! Total: ${photoGalleryData.length}`, 'success');
+                };
+                
+                // Add location to all photos
+                addLocationToAllBtn.onclick = async () => {
+                    const photosNeedingGeoTag = photoGalleryData.filter(p => p.needs_geotag);
+                    if (photosNeedingGeoTag.length === 0) {
+                        showPopup('All photos already have location tags', 'success');
+                        return;
+                    }
+                    
+                    addLocationToAllBtn.disabled = true;
+                    addLocationToAllBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Getting location...';
+                    
+                    // Get location once
+                    let latitude, longitude, plusCode, mapsUrl;
+                    
+                    const getLocation = async () => {
+                        const isSecure = window.isSecureContext;
+                        
+                        return new Promise((resolve, reject) => {
+                            if (isSecure && "geolocation" in navigator) {
+                                navigator.geolocation.getCurrentPosition(
+                                    async pos => {
+                                        try {
+                                            const res = await fetch(`${API_BASE_URL}/api/get-location?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}`, {
+                                                signal: AbortSignal.timeout(8000)
+                                            });
+                                            const data = await res.json();
+                                            resolve({
+                                                lat: pos.coords.latitude,
+                                                lon: pos.coords.longitude,
+                                                plusCode: data.plus_code || 'Address not found',
+                                                mapsUrl: data.maps_url || ''
+                                            });
+                                        } catch (err) {
+                                            resolve({
+                                                lat: pos.coords.latitude,
+                                                lon: pos.coords.longitude,
+                                                plusCode: 'Location unavailable',
+                                                mapsUrl: ''
+                                            });
+                                        }
+                                    },
+                                    async (error) => {
+                                        // Fallback to IP-based location
+                                        try {
+                                            const res = await fetch(`${API_BASE_URL}/api/get-ip-location`, {
+                                                signal: AbortSignal.timeout(8000)
+                                            });
+                                            const data = await res.json();
+                                            if (data.success && data.latitude && data.longitude) {
+                                                const res2 = await fetch(`${API_BASE_URL}/api/get-location?lat=${data.latitude}&lon=${data.longitude}`, {
+                                                    signal: AbortSignal.timeout(8000)
+                                                });
+                                                const data2 = await res2.json();
+                                                resolve({
+                                                    lat: data.latitude,
+                                                    lon: data.longitude,
+                                                    plusCode: data2.plus_code || 'Address not found',
+                                                    mapsUrl: data2.maps_url || ''
+                                                });
+                                            } else {
+                                                reject('Could not get location');
+                                            }
+                                        } catch (err) {
+                                            reject('Could not get location');
+                                        }
+                                    },
+                                    { 
+                                        enableHighAccuracy: true,
+                                        timeout: 10000,
+                                        maximumAge: 0
+                                    }
+                                );
+                            } else {
+                                // Use IP-based location
+                                fetch(`${API_BASE_URL}/api/get-ip-location`, {
+                                    signal: AbortSignal.timeout(8000)
+                                }).then(async res => {
+                                    const data = await res.json();
+                                    if (data.success && data.latitude && data.longitude) {
+                                        const res2 = await fetch(`${API_BASE_URL}/api/get-location?lat=${data.latitude}&lon=${data.longitude}`, {
+                                            signal: AbortSignal.timeout(8000)
+                                        });
+                                        const data2 = await res2.json();
+                                        resolve({
+                                            lat: data.latitude,
+                                            lon: data.longitude,
+                                            plusCode: data2.plus_code || 'Address not found',
+                                            mapsUrl: data2.maps_url || ''
+                                        });
+                                    } else {
+                                        reject('Could not get location');
+                                    }
+                                }).catch(() => reject('Could not get location'));
+                            }
+                        });
+                    };
+                    
                     try {
+                        const location = await getLocation();
+                        
+                        // Apply location to all photos that need it
+                        let count = 0;
+                        photoGalleryData.forEach((photo, idx) => {
+                            if (photo.needs_geotag) {
+                                // Draw geo-tag on each photo
+                                const tempCanvas = document.createElement('canvas');
+                                const tempCtx = tempCanvas.getContext('2d');
+                                const img = new Image();
+                                img.onload = () => {
+                                    tempCanvas.width = img.width;
+                                    tempCanvas.height = img.height;
+                                    tempCtx.drawImage(img, 0, 0);
+                                    
+                                    const timestamp = new Date().toLocaleString();
+                                    const labelLines = [
+                                        `📍 ${location.lat.toFixed(6)}, ${location.lon.toFixed(6)}`,
+                                        `📮 ${location.plusCode}`,
+                                        `🌍 ${location.mapsUrl || 'Maps URL unavailable'}`,
+                                        `🕒 ${timestamp}`
+                                    ];
+                                    
+                                    const boxHeight = 110;
+                                    tempCtx.fillStyle = 'rgba(0,0,0,0.65)';
+                                    tempCtx.fillRect(0, tempCanvas.height - boxHeight, tempCanvas.width, boxHeight);
+                                    tempCtx.fillStyle = 'white';
+                                    tempCtx.font = '14px Arial';
+                                    tempCtx.textAlign = 'left';
+                                    tempCtx.textBaseline = 'top';
+                                    
+                                    const startY = tempCanvas.height - boxHeight + 10;
+                                    labelLines.forEach((line, i) => {
+                                        tempCtx.fillText(line.length > 70 ? line.slice(0, 67) + '...' : line, 10, startY + i * 23);
+                                    });
+                                    
+                                    photoGalleryData[idx].photo = tempCanvas.toDataURL('image/png');
+                                    photoGalleryData[idx].maps_url = location.mapsUrl;
+                                    photoGalleryData[idx].location_text = location.plusCode;
+                                    photoGalleryData[idx].needs_geotag = false;
+                                    count++;
+                                    
+                                    if (count === photosNeedingGeoTag.length) {
+                                        renderGallery();
+                                        addLocationToAllBtn.disabled = false;
+                                        addLocationToAllBtn.innerHTML = '<i class="fas fa-map-marked-alt"></i> Add Location to All';
+                                        showPopup(`Location added to ${count} photo(s)!`, 'success');
+                                    }
+                                };
+                                img.src = photo.photo;
+                            }
+                        });
+                    } catch (err) {
+                        showPopup('Could not get location. Please try again.', 'error');
+                        addLocationToAllBtn.disabled = false;
+                        addLocationToAllBtn.innerHTML = '<i class="fas fa-map-marked-alt"></i> Add Location to All';
+                    }
+                };
+                
+                // Save all photos
+                saveAllBtn.onclick = async () => {
+                    if (photoGalleryData.length === 0) {
+                        showPopup('Please capture at least one photo', 'warning');
+                        return;
+                    }
+                    
+                    try {
+                        // Clean up data before saving (remove needs_geotag flag)
+                        const photosToSave = photoGalleryData.map(p => ({
+                            photo: p.photo,
+                            maps_url: p.maps_url || '',
+                            timestamp: p.timestamp,
+                            location_text: p.location_text || ''
+                        }));
+                        
+                        console.log('Saving photos:', photosToSave.length);
+                        
                         const res = await fetch(`${API_BASE_URL}/api/save-section`, {
                             method: 'POST',
                             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ section: 'photo', data: { photo: dataUrl, maps_url: mapsUrl }, date }),
+                            body: JSON.stringify({
+                                section: 'photo',
+                                data: { photos: photosToSave },
+                                date: new Date().toISOString().split('T')[0]
+                            })
                         });
-                        const text = await res.text(); const data = JSON.parse(text);
-                        if (!res.ok) return showPopup(data.message || 'Failed to save photo');
-                        if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
-                        resetToInitial();
+                        
+                        const data = await res.json();
+                        console.log('Save response:', data);
+                        if (!res.ok) {
+                            showPopup(data.message || 'Failed to save', 'error');
+                            return;
+                        }
+                        
                         updateSectionTick('photo');
-                        showPopup('Photo saved successfully', 'success');
+                        showPopup(`Successfully saved ${photoGalleryData.length} photo(s)!`, 'success');
+                        
+                        // Hide photo section explicitly
                         document.getElementById('photo-section').classList.add('hidden');
-                        document.getElementById('back-to-dashboard').click();
-                    } catch (err) { showPopup('Error: ' + err.message); }
+                        
+                        // Stop camera if active
+                        if (video.srcObject) {
+                            video.srcObject.getTracks().forEach(t => t.stop());
+                            video.srcObject = null;
+                        }
+                        
+                        document.getElementById('back-to-dashboard')?.click();
+                    } catch (err) {
+                        console.error('Save error:', err);
+                        showPopup('Error: ' + err.message, 'error');
+                    }
                 };
             } else {
                 form.innerHTML = `<p class="text-gray-600">Placeholder for future questions.</p><button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>`;
