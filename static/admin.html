@@ -1,96 +1,195 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin Control Panel</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        .sidebar-item.active { background-color: #e0e7ff; color: #4338ca; border-right: 4px solid #4338ca; }
-        
+        .sidebar-item.active {
+            background-color: #e0e7ff;
+            color: #4338ca;
+            border-right: 4px solid #4338ca;
+        }
+
         /* Mobile responsive sidebar */
         @media (max-width: 640px) {
-            aside { 
-                position: fixed; 
-                left: -100%; 
-                transition: left 0.3s ease; 
-                z-index: 50; 
+            aside {
+                position: fixed;
+                left: -100%;
+                transition: left 0.3s ease;
+                z-index: 50;
                 height: 100vh;
             }
-            aside.mobile-open { left: 0; }
+
+            aside.mobile-open {
+                left: 0;
+            }
+
             .mobile-overlay {
                 display: none;
                 position: fixed;
                 inset: 0;
-                background: rgba(0,0,0,0.5);
+                background: rgba(0, 0, 0, 0.5);
                 z-index: 40;
             }
-            .mobile-overlay.active { display: block; }
-            
+
+            .mobile-overlay.active {
+                display: block;
+            }
+
             /* Make tables scrollable on mobile */
             .overflow-x-auto {
                 overflow-x: auto;
                 -webkit-overflow-scrolling: touch;
             }
-            
+
             /* Adjust main content padding on mobile */
             main {
                 padding: 1rem;
             }
         }
-        
+
         /* ── Upload Wizard ── */
-        .upload-step { display: none; }
-        .upload-step.active { display: block; }
+        .upload-step {
+            display: none;
+        }
+
+        .upload-step.active {
+            display: block;
+        }
+
         .sheet-checkbox-label {
-            display: flex; align-items: center; gap: 10px;
-            padding: 10px 14px; border: 2px solid #e5e7eb;
-            border-radius: 10px; cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            cursor: pointer;
             transition: border-color .2s, background .2s;
-            font-weight: 500; color: #374151;
+            font-weight: 500;
+            color: #374151;
         }
-        .sheet-checkbox-label:hover { border-color: #6366f1; background: #f5f3ff; }
-        .sheet-checkbox-label input:checked + span { color: #4f46e5; }
+
+        .sheet-checkbox-label:hover {
+            border-color: #6366f1;
+            background: #f5f3ff;
+        }
+
+        .sheet-checkbox-label input:checked+span {
+            color: #4f46e5;
+        }
+
         .sheet-checkbox-label:has(input:checked) {
-            border-color: #6366f1; background: #eef2ff;
+            border-color: #6366f1;
+            background: #eef2ff;
         }
+
         .col-map-card {
-            background: #fff; border: 1px solid #e5e7eb;
-            border-radius: 12px; padding: 16px;
-            box-shadow: 0 1px 4px rgba(0,0,0,.06);
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 16px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, .06);
         }
+
         .progress-bar-track {
-            width: 100%; height: 4px;
-            background: #e5e7eb; border-radius: 2px; margin-bottom: 20px;
+            width: 100%;
+            height: 4px;
+            background: #e5e7eb;
+            border-radius: 2px;
+            margin-bottom: 20px;
         }
+
         .progress-bar-fill {
-            height: 100%; border-radius: 2px;
+            height: 100%;
+            border-radius: 2px;
             background: linear-gradient(90deg, #6366f1, #8b5cf6);
             transition: width .3s ease;
         }
+
         .step-indicator {
-            display: flex; gap: 6px; margin-bottom: 18px;
-            font-size: .75rem; font-weight: 600; text-transform: uppercase;
-            letter-spacing: .05em; color: #9ca3af;
+            display: flex;
+            gap: 6px;
+            margin-bottom: 18px;
+            font-size: .75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            color: #9ca3af;
         }
-        .step-indicator .step { padding: 4px 10px; border-radius: 99px; background: #f3f4f6; }
-        .step-indicator .step.active { background: #6366f1; color: #fff; }
+
+        .step-indicator .step {
+            padding: 4px 10px;
+            border-radius: 99px;
+            background: #f3f4f6;
+        }
+
+        .step-indicator .step.active {
+            background: #6366f1;
+            color: #fff;
+        }
+
         .preview-tag {
-            display: inline-flex; align-items: center; gap: 6px;
-            background: #eef2ff; color: #4338ca;
-            border-radius: 99px; padding: 3px 10px;
-            font-size: .78rem; font-weight: 600; margin: 3px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #eef2ff;
+            color: #4338ca;
+            border-radius: 99px;
+            padding: 3px 10px;
+            font-size: .78rem;
+            font-weight: 600;
+            margin: 3px;
         }
-        #upload-progress-wrap { display: none; }
-        #upload-progress-wrap.show { display: block; }
+
+        #upload-progress-wrap {
+            display: none;
+        }
+
+        #upload-progress-wrap.show {
+            display: block;
+        }
+
+        #detail-modal {
+            overflow: hidden;
+        }
+
+        #detail-modal .detail-modal-panel {
+            height: calc(100vh - 2rem);
+            max-height: calc(100vh - 2rem);
+        }
+
+        #detail-modal-content {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+            scrollbar-width: thin;
+            scrollbar-color: #6366f1 #f3f4f6;
+        }
+
+        #detail-modal-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #detail-modal-content::-webkit-scrollbar-thumb {
+            background-color: #6366f1;
+            border-radius: 20px;
+        }
     </style>
 </head>
+
 <body class="bg-gray-50 flex h-screen overflow-hidden">
-    
+
     <!-- Mobile Menu Button -->
-    <button id="mobile-menu-btn" class="sm:hidden fixed top-4 left-4 z-50 bg-indigo-600 text-white p-3 rounded-lg shadow-lg">
+    <button id="mobile-menu-btn"
+        class="sm:hidden fixed top-4 left-4 z-50 bg-indigo-600 text-white p-3 rounded-lg shadow-lg">
         <i class="fas fa-bars"></i>
     </button>
 
@@ -106,30 +205,42 @@
             </button>
         </div>
         <nav class="flex-1 overflow-y-auto py-4">
-            <button class="sidebar-item active w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50" data-target="upload-data">
+            <button class="sidebar-item active w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+                data-target="upload-data">
                 <i class="fas fa-upload mr-3 w-5 text-center"></i> Upload Data
             </button>
-            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50" data-target="dashboard">
+            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+                data-target="dashboard">
                 <i class="fas fa-tachometer-alt mr-3 w-5 text-center"></i> Audit Dashboard
             </button>
-            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50" data-target="warehouse">
+            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+                data-target="warehouse">
                 <i class="fas fa-warehouse mr-3 w-5 text-center"></i> Warehouse Master
             </button>
-            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50" data-target="warehouse-status">
+            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+                data-target="warehouse-status">
                 <i class="fas fa-clipboard-check mr-3 w-5 text-center"></i> Warehouse Status
             </button>
-            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50" data-target="analysis">
+            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+                data-target="reconciliation">
+                <i class="fas fa-balance-scale mr-3 w-5 text-center"></i> Stock Reconciliation
+            </button>
+            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+                data-target="tasks">
+                <i class="fas fa-tasks mr-3 w-5 text-center"></i> Task Assignment
+            </button>
+            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+                data-target="analysis">
                 <i class="fas fa-chart-line mr-3 w-5 text-center"></i> Analysis
             </button>
-            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50" data-target="data">
-                <i class="fas fa-database mr-3 w-5 text-center"></i> Data
-            </button>
-            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50" data-target="employees">
+            <button class="sidebar-item w-full text-left px-6 py-3 font-semibold text-gray-700 hover:bg-gray-50"
+                data-target="employees">
                 <i class="fas fa-users mr-3 w-5 text-center"></i> Employees
             </button>
         </nav>
         <div class="p-4 border-t">
-            <button id="back-to-app" class="w-full bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 font-semibold">
+            <button id="back-to-app"
+                class="w-full bg-gray-200 text-gray-800 py-2 rounded-lg hover:bg-gray-300 font-semibold">
                 <i class="fas fa-arrow-left mr-2"></i> User Dashboard
             </button>
         </div>
@@ -137,7 +248,7 @@
 
     <!-- Main Content -->
     <main class="flex-1 overflow-y-auto p-4 sm:p-8">
-        
+
         <!-- Upload Data View -->
         <div id="upload-data-view" class="view-section">
             <h2 class="text-2xl font-bold mb-6">Upload Item Master Data</h2>
@@ -165,14 +276,16 @@
                         <span class="text-sm text-indigo-600 font-medium">Click to browse or drag &amp; drop</span>
                         <input type="file" id="upload-file" accept=".xlsx,.xls,.xlsb,.csv" class="hidden">
                     </label>
-                    <div id="file-selected-info" class="hidden mt-3 flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+                    <div id="file-selected-info"
+                        class="hidden mt-3 flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
                         <i class="fas fa-file-alt text-green-600"></i>
                         <span id="file-selected-name" class="text-sm text-green-800 font-medium flex-1"></span>
                         <button id="file-clear" class="text-red-400 hover:text-red-600 text-xs">
                             <i class="fas fa-times"></i> Clear
                         </button>
                     </div>
-                    <button id="step1-next" disabled class="mt-5 w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition">
+                    <button id="step1-next" disabled
+                        class="mt-5 w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition">
                         Next: Select Sheets <i class="fas fa-arrow-right ml-1"></i>
                     </button>
                 </div>
@@ -182,31 +295,39 @@
                     <p class="text-gray-600 text-sm mb-4">Select sheets to import.</p>
                     <div id="sheet-list" class="space-y-2 max-h-72 overflow-y-auto pr-1"></div>
                     <div class="flex gap-3 mt-5">
-                        <button id="step2-back" class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 font-semibold transition">Back</button>
-                        <button id="step2-next" disabled class="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-40 font-semibold transition">Next: Map Columns</button>
+                        <button id="step2-back"
+                            class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 font-semibold transition">Back</button>
+                        <button id="step2-next" disabled
+                            class="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-40 font-semibold transition">Next:
+                            Map Columns</button>
                     </div>
                 </div>
 
                 <!-- ── Step 3 : Column mapping ── -->
                 <div class="upload-step" id="wizard-step-3">
                     <p class="text-gray-500 text-sm mb-4">
-                        Map the columns for <strong>Item Code</strong>, <strong>Item Name</strong>, <strong>Quantity</strong> and <strong>Optional 4th Column</strong>.
+                        Map the columns for <strong>Item Code</strong>, <strong>Item Name</strong>,
+                        <strong>Quantity</strong> and <strong>Optional 4th Column</strong>.
                     </p>
                     <div id="column-map-list" class="space-y-4 max-h-[60vh] overflow-y-auto pr-1"></div>
-                    
+
                     <div id="upload-progress-wrap" class="mt-4">
                         <div class="flex justify-between text-xs text-gray-500 mb-1">
                             <span id="upload-progress-label">Uploading…</span>
                             <span id="upload-progress-pct">0%</span>
                         </div>
                         <div class="w-full bg-gray-100 rounded-full h-2">
-                            <div id="upload-progress-bar" class="bg-indigo-500 h-2 rounded-full transition-all" style="width:0%"></div>
+                            <div id="upload-progress-bar" class="bg-indigo-500 h-2 rounded-full transition-all"
+                                style="width:0%"></div>
                         </div>
                     </div>
-                    
+
                     <div class="flex gap-3 mt-5">
-                        <button id="step3-back" class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 font-semibold transition">Back</button>
-                        <button id="step3-upload" class="flex-1 bg-green-600 text-white py-2.5 rounded-lg hover:bg-green-700 font-semibold transition"><i class="fas fa-upload mr-1"></i> Upload Items</button>
+                        <button id="step3-back"
+                            class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 font-semibold transition">Back</button>
+                        <button id="step3-upload"
+                            class="flex-1 bg-green-600 text-white py-2.5 rounded-lg hover:bg-green-700 font-semibold transition"><i
+                                class="fas fa-upload mr-1"></i> Upload Items</button>
                     </div>
                 </div>
             </div>
@@ -215,59 +336,71 @@
             <div id="upload-history-container" class="bg-white shadow rounded-lg p-4 max-w-3xl overflow-auto">
                 <p class="text-gray-500">Loading history...</p>
             </div>
+
+            <!-- Upload History Pagination -->
+            <div id="upload-history-pagination" class="mt-4 max-w-3xl">
+                <!-- Pagination will be rendered here by JavaScript -->
+            </div>
         </div>
 
         <!-- Analysis View -->
         <div id="analysis-view" class="view-section hidden">
             <h2 class="text-2xl font-bold mb-6">Analysis & Insights</h2>
-            
+
             <!-- Date Range Filter -->
             <div class="flex flex-wrap gap-3 mb-6 items-center">
                 <label class="text-sm font-semibold text-gray-700">Date Range:</label>
-                <input type="date" id="analytics-start-date" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400">
+                <input type="date" id="analytics-start-date"
+                    class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400">
                 <span class="text-gray-500">to</span>
-                <input type="date" id="analytics-end-date" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400">
-                <button id="analytics-refresh" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 font-semibold">
+                <input type="date" id="analytics-end-date"
+                    class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400">
+                <button id="analytics-refresh"
+                    class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 font-semibold">
                     <i class="fas fa-sync-alt mr-1"></i> Refresh
                 </button>
             </div>
 
             <!-- Summary Cards -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl shadow-lg p-5">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-blue-100 text-xs font-semibold uppercase tracking-wide">Total Audits</p>
-                            <p id="analytics-total-audits" class="text-3xl font-bold mt-1">—</p>
+            <div class="overflow-x-auto -mx-2 px-2">
+                <div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6 min-w-[520px]">
+                    <div class="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl shadow-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-blue-100 text-xs font-semibold uppercase tracking-wide">Total Audits</p>
+                                <p id="analytics-total-audits" class="text-2xl md:text-3xl font-bold mt-1">—</p>
+                            </div>
+                            <i class="fas fa-clipboard-list text-3xl md:text-4xl text-blue-200 opacity-50"></i>
                         </div>
-                        <i class="fas fa-clipboard-list text-4xl text-blue-200 opacity-50"></i>
                     </div>
-                </div>
-                <div class="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl shadow-lg p-5">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-green-100 text-xs font-semibold uppercase tracking-wide">Completion Rate</p>
-                            <p id="analytics-completion-rate" class="text-3xl font-bold mt-1">—</p>
+                    <div class="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl shadow-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-green-100 text-xs font-semibold uppercase tracking-wide">Completion Rate
+                                </p>
+                                <p id="analytics-completion-rate" class="text-2xl md:text-3xl font-bold mt-1">—</p>
+                            </div>
+                            <i class="fas fa-check-circle text-3xl md:text-4xl text-green-200 opacity-50"></i>
                         </div>
-                        <i class="fas fa-check-circle text-4xl text-green-200 opacity-50"></i>
                     </div>
-                </div>
-                <div class="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-xl shadow-lg p-5">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-purple-100 text-xs font-semibold uppercase tracking-wide">Avg Sections</p>
-                            <p id="analytics-avg-sections" class="text-3xl font-bold mt-1">—</p>
+                    <div class="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-xl shadow-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-purple-100 text-xs font-semibold uppercase tracking-wide">Avg Sections
+                                </p>
+                                <p id="analytics-avg-sections" class="text-2xl md:text-3xl font-bold mt-1">—</p>
+                            </div>
+                            <i class="fas fa-tasks text-3xl md:text-4xl text-purple-200 opacity-50"></i>
                         </div>
-                        <i class="fas fa-tasks text-4xl text-purple-200 opacity-50"></i>
                     </div>
-                </div>
-                <div class="bg-gradient-to-br from-orange-500 to-orange-600 text-white rounded-xl shadow-lg p-5">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-orange-100 text-xs font-semibold uppercase tracking-wide">Stock Items</p>
-                            <p id="analytics-total-items" class="text-3xl font-bold mt-1">—</p>
+                    <div class="bg-gradient-to-br from-red-500 to-red-600 text-white rounded-xl shadow-lg p-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-red-100 text-xs font-semibold uppercase tracking-wide">Stock Items</p>
+                                <p id="analytics-total-items" class="text-2xl md:text-3xl font-bold mt-1">—</p>
+                            </div>
+                            <i class="fas fa-boxes text-3xl md:text-4xl text-red-200 opacity-50"></i>
                         </div>
-                        <i class="fas fa-boxes text-4xl text-orange-200 opacity-50"></i>
                     </div>
                 </div>
             </div>
@@ -311,28 +444,38 @@
         <!-- Data View -->
         <div id="data-view" class="view-section hidden">
             <h2 class="text-2xl font-bold mb-6">Data Export & View</h2>
-            
+
             <!-- Search/Filter Bar -->
             <div class="flex flex-wrap gap-3 mb-4 items-center">
-                <input type="text" id="data-search-user" placeholder="Search by user..." class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 w-48">
-                <input type="date" id="data-search-date" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400">
-                <input type="text" id="data-search-warehouse" placeholder="Search warehouse..." class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 w-48">
-                <button id="data-search-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 font-semibold">
+                <input type="text" id="data-search-user" placeholder="Search by user..."
+                    class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 w-48">
+                <input type="date" id="data-search-date"
+                    class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400">
+                <input type="text" id="data-search-warehouse" placeholder="Search warehouse..."
+                    class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-400 w-48">
+                <button id="data-search-btn"
+                    class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 font-semibold">
                     <i class="fas fa-search mr-1"></i> Search
                 </button>
-                <button id="data-clear-btn" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-400 font-semibold">
+                <button id="data-clear-btn"
+                    class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-400 font-semibold">
                     <i class="fas fa-times mr-1"></i> Clear
                 </button>
             </div>
-            
+
             <div class="flex gap-4 border-b mb-4">
-                <button id="tab-btn-checklist" class="data-tab-btn px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600">Checklist Data</button>
-                <button id="tab-btn-stockcount" class="data-tab-btn px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent">Stock Count Data</button>
+                <button id="tab-btn-checklist"
+                    class="data-tab-btn px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600">Checklist
+                    Data</button>
+                <button id="tab-btn-stockcount"
+                    class="data-tab-btn px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent">Stock Count
+                    Data</button>
             </div>
-            
+
             <div id="tab-checklist" class="data-tab-content">
                 <div class="flex justify-end mb-3">
-                    <button id="export-checklist-all" class="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 leading-tight">
+                    <button id="export-checklist-all"
+                        class="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 leading-tight">
                         <i class="fas fa-file-excel mr-1"></i> Export All Checklists
                     </button>
                 </div>
@@ -348,15 +491,20 @@
                             </tr>
                         </thead>
                         <tbody id="checklist-table-body" class="divide-y text-gray-700">
-                            <tr><td colspan="5" class="py-4 text-center">Loading...</td></tr>
+                            <tr>
+                                <td colspan="5" class="py-4 text-center">Loading...</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
+                <!-- Data Tab: Checklist Pagination -->
+                <div id="data-checklist-pagination" class="mt-3"></div>
             </div>
-            
+
             <div id="tab-stockcount" class="data-tab-content hidden">
                 <div class="flex justify-end mb-3">
-                    <button id="export-stockcount-all" class="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 leading-tight">
+                    <button id="export-stockcount-all"
+                        class="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 leading-tight">
                         <i class="fas fa-file-excel mr-1"></i> Export All Stock Counts
                     </button>
                 </div>
@@ -372,25 +520,29 @@
                             </tr>
                         </thead>
                         <tbody id="stockcount-table-body" class="divide-y text-gray-700">
-                            <tr><td colspan="5" class="py-4 text-center">Loading...</td></tr>
+                            <tr>
+                                <td colspan="5" class="py-4 text-center">Loading...</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
+                <!-- Data Tab: Stock Count Pagination -->
+                <div id="data-stockcount-pagination" class="mt-3"></div>
             </div>
         </div>
 
         <!-- Detail View Modal -->
-        <div id="detail-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                <div class="flex items-center justify-between p-6 border-b">
-                    <h3 class="text-xl font-bold text-gray-800">
+        <div id="detail-modal"
+            class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] p-4 overflow-hidden">
+            <div class="detail-modal-panel bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col">
+                <div class="flex items-center justify-between p-6 border-b flex-shrink-0">
+                    <h3 class="text-xl font-bold text-gray-800" id="modal-title">
                         <i class="fas fa-info-circle text-indigo-600 mr-2"></i>Audit Details
                     </h3>
-                    <button id="close-detail-modal" class="text-gray-400 hover:text-gray-600 text-2xl">
-                        <i class="fas fa-times"></i>
-                    </button>
+                    <button onclick="closeDetailModal()" id="close-detail-modal"
+                        class="text-gray-400 hover:text-gray-600 text-3xl leading-none">×</button>
                 </div>
-                <div id="detail-modal-content" class="p-6 overflow-y-auto flex-1">
+                <div id="detail-modal-content" class="p-6">
                     <!-- Content will be dynamically loaded -->
                 </div>
             </div>
@@ -399,16 +551,16 @@
         <!-- Employees View -->
         <div id="employees-view" class="view-section hidden">
             <h2 class="text-2xl font-bold mb-6">Employee Stats</h2>
-            
+
             <!-- Search Bar -->
             <div class="mb-4">
                 <div class="relative max-w-md">
-                    <input type="text" id="employee-search" placeholder="Search by email or name..." 
+                    <input type="text" id="employee-search" placeholder="Search by email or name..."
                         class="w-full border border-gray-300 rounded-lg px-4 py-2 pl-10 text-sm focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400">
                     <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
                 </div>
             </div>
-            
+
             <div class="bg-white shadow rounded-lg overflow-x-auto">
                 <table class="min-w-full text-sm">
                     <thead class="bg-gray-100 border-b">
@@ -418,9 +570,16 @@
                         </tr>
                     </thead>
                     <tbody id="employees-table-body" class="divide-y text-gray-700">
-                        <tr><td colspan="2" class="py-4 text-center">Loading...</td></tr>
+                        <tr>
+                            <td colspan="2" class="py-4 text-center">Loading...</td>
+                        </tr>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Employees Pagination -->
+            <div id="employees-pagination">
+                <!-- Pagination will be rendered here by JavaScript -->
             </div>
         </div>
 
@@ -429,43 +588,78 @@
             <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <h2 class="text-2xl font-bold">Audit Completion Dashboard</h2>
                 <div class="flex gap-2 flex-wrap">
-                    <input type="date" id="dash-filter-date" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400">
-                    <input type="text" id="dash-filter-user" placeholder="Filter by user…" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 w-44">
-                    <select id="dash-filter-status" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400">
+                    <input type="date" id="dash-filter-date"
+                        class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400">
+                    <input type="text" id="dash-filter-user" placeholder="Filter by user…"
+                        class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 w-44">
+                    <select id="dash-filter-status"
+                        class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400">
                         <option value="">All Status</option>
                         <option value="Submitted">Submitted</option>
                         <option value="In Progress">In Progress</option>
                     </select>
-                    <button id="dash-refresh" class="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-indigo-700 font-semibold">
+                    <button id="dash-refresh"
+                        class="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-indigo-700 font-semibold">
                         <i class="fas fa-sync-alt mr-1"></i> Refresh
                     </button>
                 </div>
             </div>
 
-            <!-- Summary Cards -->
+            <!-- Checklist KPI Cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                    <div id="dash-cl-total" class="text-3xl font-bold text-indigo-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Checklist Records
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                    <div id="dash-cl-submitted" class="text-3xl font-bold text-green-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Checklist Submitted
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                    <div id="dash-cl-inprogress" class="text-3xl font-bold text-yellow-500">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Checklist In Progress
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                    <div id="dash-cl-pct" class="text-3xl font-bold text-purple-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Checklist Completion
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stock Count KPI Cards -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
                 <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
-                    <div id="dash-total" class="text-3xl font-bold text-indigo-600">—</div>
-                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Total Audits</div>
+                    <div id="dash-sc-total" class="text-3xl font-bold text-indigo-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Stock Count Records
+                    </div>
                 </div>
                 <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
-                    <div id="dash-submitted" class="text-3xl font-bold text-green-600">—</div>
-                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Submitted</div>
+                    <div id="dash-sc-submitted" class="text-3xl font-bold text-green-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Stock Count Submitted
+                    </div>
                 </div>
                 <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
-                    <div id="dash-inprogress" class="text-3xl font-bold text-yellow-500">—</div>
-                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">In Progress</div>
+                    <div id="dash-sc-inprogress" class="text-3xl font-bold text-yellow-500">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Stock Count In
+                        Progress</div>
                 </div>
                 <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
-                    <div id="dash-sc-submitted" class="text-3xl font-bold text-blue-600">—</div>
-                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Stock Count Done</div>
+                    <div id="dash-sc-items" class="text-3xl font-bold text-blue-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Stock Count Items
+                    </div>
                 </div>
             </div>
 
             <!-- Tabs: Checklist / Stock Count -->
             <div class="flex gap-4 border-b mb-4">
-                <button id="dash-tab-checklist" class="px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm">Checklist</button>
-                <button id="dash-tab-stockcount" class="px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm">Stock Count</button>
+                <button id="dash-tab-checklist"
+                    class="px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm">Checklist</button>
+                <button id="dash-tab-stockcount"
+                    class="px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm">Stock
+                    Count</button>
             </div>
 
             <!-- Checklist Tab -->
@@ -480,12 +674,32 @@
                                 <th class="py-3 px-4 text-left font-semibold text-gray-600">Progress</th>
                                 <th class="py-3 px-4 text-left font-semibold text-gray-600">Status</th>
                                 <th class="py-3 px-4 text-left font-semibold text-gray-600">Submitted At</th>
+                                <th class="py-3 px-4 text-left font-semibold text-gray-600">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="dash-checklist-body" class="divide-y text-gray-700">
-                            <tr><td colspan="6" class="py-6 text-center text-gray-400">Loading…</td></tr>
+                            <tr>
+                                <td colspan="7" class="py-6 text-center text-gray-400">Loading…</td>
+                            </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <!-- Checklist Pagination -->
+                <div id="checklist-pagination" class="flex items-center justify-between mt-4 hidden">
+                    <div class="text-sm text-gray-500">
+                        Showing <span id="checklist-showing-from">0</span> to <span id="checklist-showing-to">0</span>
+                        of <span id="checklist-total-items">0</span> items
+                    </div>
+                    <div class="flex gap-1">
+                        <button id="checklist-prev-page"
+                            class="px-3 py-1 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                            disabled>Previous</button>
+                        <div id="checklist-page-numbers" class="flex gap-1"></div>
+                        <button id="checklist-next-page"
+                            class="px-3 py-1 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                            disabled>Next</button>
+                    </div>
                 </div>
             </div>
 
@@ -497,18 +711,39 @@
                             <tr>
                                 <th class="py-3 px-4 text-left font-semibold text-gray-600">Date</th>
                                 <th class="py-3 px-4 text-left font-semibold text-gray-600">User</th>
-                                <th class="py-3 px-4 text-left font-semibold text-gray-600">Warehouse</th>
-                                <th class="py-3 px-4 text-left font-semibold text-gray-600">Progress</th>
-                                <th class="py-3 px-4 text-left font-semibold text-gray-600">SC Status</th>
-                                <th class="py-3 px-4 text-left font-semibold text-gray-600">Audit Status</th>
+                                <th class="py-3 px-4 text-left font-semibold text-gray-600">Items Count</th>
+                                <th class="py-3 px-4 text-left font-semibold text-gray-600">Status</th>
+                                <th class="py-3 px-4 text-left font-semibold text-gray-600">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="dash-stockcount-body" class="divide-y text-gray-700">
-                            <tr><td colspan="6" class="py-6 text-center text-gray-400">Loading…</td></tr>
+                            <tr>
+                                <td colspan="5" class="py-6 text-center text-gray-400">Loading…</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Stock Count Pagination -->
+                <div id="stockcount-pagination" class="flex items-center justify-between mt-4 hidden">
+                    <div class="text-sm text-gray-500">
+                        Showing <span id="stockcount-showing-from">0</span> to <span id="stockcount-showing-to">0</span>
+                        of <span id="stockcount-total-items">0</span> items
+                    </div>
+                    <div class="flex gap-1">
+                        <button id="stockcount-prev-page"
+                            class="px-3 py-1 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                            disabled>Previous</button>
+                        <div id="stockcount-page-numbers" class="flex gap-1"></div>
+                        <button id="stockcount-next-page"
+                            class="px-3 py-1 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                            disabled>Next</button>
+                    </div>
+                </div>
             </div>
+            <!-- Dashboard Pagination (shared, inside dashboard-view) -->
+            <div id="dash-pagination" class="mt-4"></div>
+        </div>
         </div>
 
         <!-- ── Warehouse Status View ── -->
@@ -516,21 +751,24 @@
             <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
                 <h2 class="text-2xl font-bold">Warehouse Audit Status</h2>
                 <div class="flex gap-2 flex-wrap">
-                    <input type="date" id="wh-status-date" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400">
-                    <select id="wh-status-filter" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400">
+                    <input type="date" id="wh-status-date"
+                        class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400">
+                    <select id="wh-status-filter"
+                        class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400">
                         <option value="">All Status</option>
                         <option value="Completed">Completed</option>
                         <option value="In Progress">In Progress</option>
                         <option value="Not Started">Not Started</option>
                     </select>
-                    <button id="wh-status-refresh" class="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-indigo-700 font-semibold">
+                    <button id="wh-status-refresh"
+                        class="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-indigo-700 font-semibold">
                         <i class="fas fa-sync-alt mr-1"></i> Refresh
                     </button>
                 </div>
             </div>
 
             <!-- Summary Cards -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
                 <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
                     <div id="wh-status-total" class="text-3xl font-bold text-indigo-600">—</div>
                     <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Total Warehouses</div>
@@ -547,6 +785,10 @@
                     <div id="wh-status-notstarted" class="text-3xl font-bold text-red-500">—</div>
                     <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Not Started</div>
                 </div>
+                <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                    <div id="wh-status-overdue" class="text-3xl font-bold text-red-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Overdue</div>
+                </div>
             </div>
 
             <!-- Warehouse Status Table -->
@@ -558,16 +800,21 @@
                             <th class="py-3 px-4 text-left font-semibold text-gray-600">Address</th>
                             <th class="py-3 px-4 text-left font-semibold text-gray-600">Audit Status</th>
                             <th class="py-3 px-4 text-left font-semibold text-gray-600">Assigned To</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Due Date</th>
                             <th class="py-3 px-4 text-left font-semibold text-gray-600">Progress</th>
                             <th class="py-3 px-4 text-left font-semibold text-gray-600">Last Updated</th>
                             <th class="py-3 px-4 text-left font-semibold text-gray-600">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="wh-status-table-body" class="divide-y text-gray-700">
-                        <tr><td colspan="7" class="py-6 text-center text-gray-400">Loading…</td></tr>
+                        <tr>
+                            <td colspan="8" class="py-6 text-center text-gray-400">Loading…</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
+            <!-- Warehouse Status Pagination -->
+            <div id="warehouse-status-pagination" class="mt-4"></div>
         </div>
 
         <!-- ── Warehouse Master View ── -->
@@ -579,7 +826,8 @@
                 <h3 class="text-lg font-semibold text-gray-800 mb-1">Upload Warehouse List</h3>
                 <p class="text-sm text-gray-500 mb-4">
                     Upload an Excel file. Columns are auto-detected:<br>
-                    • <strong>Warehouse Name</strong> — column containing both <code>name</code> and <code>warehouse</code> keywords<br>
+                    • <strong>Warehouse Name</strong> — column containing both <code>name</code> and
+                    <code>warehouse</code> keywords<br>
                     • <strong>Address</strong> — column containing <code>address</code> keyword
                 </p>
 
@@ -590,29 +838,35 @@
                     <input type="file" id="wh-upload-file" accept=".xlsx,.xls,.csv" class="hidden">
                 </label>
 
-                <div id="wh-file-info" class="hidden mb-3 flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+                <div id="wh-file-info"
+                    class="hidden mb-3 flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
                     <i class="fas fa-file-alt text-green-600"></i>
                     <span id="wh-file-name" class="text-sm text-green-800 font-medium flex-1"></span>
-                    <button id="wh-file-clear" class="text-red-400 hover:text-red-600 text-xs"><i class="fas fa-times"></i> Clear</button>
+                    <button id="wh-file-clear" class="text-red-400 hover:text-red-600 text-xs"><i
+                            class="fas fa-times"></i> Clear</button>
                 </div>
 
                 <!-- Column mapping (shown after file parse) -->
                 <div id="wh-col-map" class="hidden mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <p class="text-sm font-semibold text-gray-700 mb-3">Column Mapping <span class="text-gray-400 font-normal">(auto-detected, adjust if needed)</span></p>
+                    <p class="text-sm font-semibold text-gray-700 mb-3">Column Mapping <span
+                            class="text-gray-400 font-normal">(auto-detected, adjust if needed)</span></p>
                     <div class="grid grid-cols-2 gap-4 text-sm">
                         <div>
                             <label class="block text-gray-600 mb-1 font-semibold">Warehouse Name Column *</label>
-                            <select id="wh-map-name" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-400"></select>
+                            <select id="wh-map-name"
+                                class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-400"></select>
                         </div>
                         <div>
                             <label class="block text-gray-600 mb-1 font-semibold">Address Column *</label>
-                            <select id="wh-map-address" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-400"></select>
+                            <select id="wh-map-address"
+                                class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-indigo-400"></select>
                         </div>
                     </div>
                     <div id="wh-preview" class="mt-3 text-xs text-gray-500"></div>
                 </div>
 
-                <button id="wh-upload-btn" disabled class="w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition">
+                <button id="wh-upload-btn" disabled
+                    class="w-full bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition">
                     <i class="fas fa-upload mr-1"></i> Upload Warehouses
                 </button>
             </div>
@@ -632,15 +886,235 @@
                         </tr>
                     </thead>
                     <tbody id="wh-table-body" class="divide-y text-gray-700">
-                        <tr><td colspan="3" class="py-6 text-center text-gray-400">Loading…</td></tr>
+                        <tr>
+                            <td colspan="3" class="py-6 text-center text-gray-400">Loading…</td>
+                        </tr>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- Warehouse Master Pagination -->
+            <div id="warehouse-master-pagination">
+                <!-- Pagination will be rendered here by JavaScript -->
+            </div>
+        </div>
+
+        <!-- ── Stock Reconciliation View ── -->
+        <div id="reconciliation-view" class="view-section hidden">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+                <h2 class="text-2xl font-bold">Stock Count Reconciliation</h2>
+                <div class="flex gap-2 flex-wrap">
+                    <input type="date" id="recon-from-date"
+                        class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400"
+                        placeholder="From Date">
+                    <input type="date" id="recon-to-date"
+                        class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400"
+                        placeholder="To Date">
+                    <input type="text" id="recon-search" placeholder="Search items..."
+                        class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 w-48">
+                    <button id="recon-refresh"
+                        class="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-indigo-700 font-semibold">
+                        <i class="fas fa-sync-alt mr-1"></i> Load Report
+                    </button>
+                    <button id="recon-export"
+                        class="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-green-700 font-semibold">
+                        <i class="fas fa-file-excel mr-1"></i> Export
+                    </button>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+                <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                    <div id="recon-total" class="text-3xl font-bold text-indigo-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Total Items</div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                    <div id="recon-matched" class="text-3xl font-bold text-green-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Matched</div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                    <div id="recon-excess" class="text-3xl font-bold text-blue-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Excess</div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                    <div id="recon-shortage" class="text-3xl font-bold text-red-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Shortage</div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border p-4 text-center">
+                    <div id="recon-match-rate" class="text-3xl font-bold text-purple-600">—</div>
+                    <div class="text-xs text-gray-500 mt-1 font-semibold uppercase tracking-wide">Match Rate</div>
+                </div>
+            </div>
+
+            <!-- Reconciliation Table -->
+            <div class="bg-white shadow rounded-xl overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-gray-50 border-b">
+                        <tr>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Item Code</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Item Name</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Sheet</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">System Qty</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Physical Qty</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Variance</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Status</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Remarks</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Auditor</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recon-table-body" class="divide-y text-gray-700">
+                        <tr>
+                            <td colspan="9" class="py-6 text-center text-gray-400">Select date range and click Load
+                                Report</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Reconciliation Pagination -->
+            <div id="recon-pagination" class="flex items-center justify-between mt-4 hidden">
+                <div class="text-sm text-gray-500">
+                    Showing <span id="recon-showing-from">0</span> to <span id="recon-showing-to">0</span> of <span
+                        id="recon-total-items">0</span> items
+                </div>
+                <div class="flex gap-1">
+                    <button id="recon-prev-page"
+                        class="px-3 py-1 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                        disabled>Previous</button>
+                    <div id="recon-page-numbers" class="flex gap-1"></div>
+                    <button id="recon-next-page"
+                        class="px-3 py-1 border border-gray-300 rounded-lg text-sm hover:bg-gray-50"
+                        disabled>Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Task Assignment View ── -->
+        <div id="tasks-view" class="view-section hidden">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+                <h2 class="text-2xl font-bold">Task Assignment</h2>
+                <button id="open-assign-task-modal"
+                    class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold">
+                    <i class="fas fa-plus mr-1"></i> Assign New Task
+                </button>
+            </div>
+
+            <!-- Filter Bar -->
+            <div class="flex gap-2 flex-wrap mb-4">
+                <input type="date" id="task-filter-date"
+                    class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400">
+                <input type="text" id="task-filter-warehouse" placeholder="Filter by warehouse..."
+                    class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-400 w-48">
+                <button id="task-refresh"
+                    class="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-indigo-700 font-semibold">
+                    <i class="fas fa-sync-alt mr-1"></i> Refresh
+                </button>
+            </div>
+
+            <!-- Task Assignment Table -->
+            <div class="bg-white shadow rounded-xl overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-gray-50 border-b">
+                        <tr>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Warehouse</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Task Type</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Assigned To</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Due Date</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Status</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Notes</th>
+                            <th class="py-3 px-4 text-left font-semibold text-gray-600">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="task-table-body" class="divide-y text-gray-700">
+                        <tr>
+                            <td colspan="7" class="py-6 text-center text-gray-400">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <!-- Task Assignment Pagination -->
+            <div id="task-assignment-pagination" class="mt-4"></div>
+        </div>
+
+        <!-- Task Assignment Modal -->
+        <div id="assign-task-modal"
+            class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full"
+                style="max-height: 85vh; display: flex; flex-direction: column;">
+                <!-- Modal Header -->
+                <div class="flex items-center justify-between p-6 border-b" style="flex-shrink: 0;">
+                    <h3 class="text-xl font-bold text-gray-800">
+                        <i class="fas fa-tasks text-indigo-600 mr-2"></i>Assign Task
+                    </h3>
+                    <button id="close-assign-task-modal" class="text-gray-400 hover:text-gray-600 text-2xl">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <!-- Modal Body (Scrollable) -->
+                <div class="p-6" style="flex: 1; overflow-y: auto; min-height: 0;">
+                    <form id="assign-task-form" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Warehouse</label>
+                            <select id="task-warehouse" required
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-400">
+                                <option value="">Select warehouse...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Task Type</label>
+                            <select id="task-type" required
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-400">
+                                <option value="checklist">Checklist Audit</option>
+                                <option value="stock_count">Stock Count</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Assign To (Multiple
+                                Users)</label>
+                            <select id="task-users" multiple required
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-400"
+                                style="height: 120px;">
+                                <!-- Options populated dynamically -->
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">Hold Ctrl (Windows) or Cmd (Mac) to select multiple
+                                users</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Due Date</label>
+                            <input type="date" id="task-due-date" required
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-400">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Notes (Optional)</label>
+                            <textarea id="task-notes" rows="3"
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-400"
+                                placeholder="Add any additional instructions..."></textarea>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Modal Footer (Fixed at bottom) -->
+                <div class="p-6 border-t bg-gray-50" style="flex-shrink: 0;">
+                    <div class="flex gap-3">
+                        <button type="button" id="cancel-assign-task"
+                            class="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg hover:bg-gray-200 font-semibold transition">
+                            <i class="fas fa-times mr-1"></i>Cancel
+                        </button>
+                        <button type="button" id="submit-assign-task"
+                            class="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 font-semibold transition">
+                            <i class="fas fa-check mr-1"></i>Assign Task
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
     </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="/static/js/admin.js"></script>
+    <script src="/static/js/admin.js?v=admin-status-analytics-1"></script>
 </body>
+
 </html>

@@ -18,32 +18,56 @@ document.addEventListener("DOMContentLoaded", () => {
     if (photoSection) photoSection.classList.add("hidden");
     if (signatureSection) signatureSection.classList.add("hidden");
 
-    // ── Checklist Tab Switching ──
+    // ── Assigned Tasks / Checklist / History Tab Switching ──
+    const checklistTabTasks = document.getElementById('checklist-tab-tasks');
     const checklistTabCurrent = document.getElementById('checklist-tab-current');
     const checklistTabHistory = document.getElementById('checklist-tab-history');
+    const assignedTasksContent = document.getElementById('assigned-tasks-content');
     const checklistCurrentContent = document.getElementById('checklist-current-content');
     const checklistHistoryContent = document.getElementById('checklist-history-content');
 
-    if (checklistTabCurrent && checklistTabHistory) {
+    function closeOpenChecklistSection() {
+        document.getElementById('section-content')?.classList.add('hidden');
+        document.getElementById('photo-section')?.classList.add('hidden');
+        document.getElementById('signature-section')?.classList.add('hidden');
+        const video = document.getElementById('video');
+        if (video && video.srcObject) {
+            video.srcObject.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+        }
+    }
+
+    function setAuditTab(activeTab) {
+        const activeClass = 'px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm';
+        const inactiveClass = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
+
+        if (checklistTabTasks) checklistTabTasks.className = activeTab === 'tasks' ? activeClass : inactiveClass;
+        if (checklistTabCurrent) checklistTabCurrent.className = activeTab === 'checklist' ? activeClass : inactiveClass;
+        if (checklistTabHistory) checklistTabHistory.className = activeTab === 'history' ? activeClass : inactiveClass;
+
+        assignedTasksContent?.classList.toggle('hidden', activeTab !== 'tasks');
+        checklistCurrentContent?.classList.toggle('hidden', activeTab !== 'checklist');
+        checklistHistoryContent?.classList.toggle('hidden', activeTab !== 'history');
+
+        closeOpenChecklistSection();
+        document.getElementById('section-list')?.classList.toggle('hidden', activeTab !== 'checklist');
+        updateButtons();
+        toggleSubmitButton();
+    }
+    window.selectAuditTab = setAuditTab;
+
+    if (checklistTabTasks && checklistTabCurrent && checklistTabHistory) {
+        checklistTabTasks.addEventListener('click', () => {
+            setAuditTab('tasks');
+            loadAssignedTasks();
+        });
+
         checklistTabCurrent.addEventListener('click', () => {
-            checklistTabCurrent.className = 'px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm';
-            checklistTabHistory.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
-            checklistCurrentContent.classList.remove('hidden');
-            checklistHistoryContent.classList.add('hidden');
+            setAuditTab('checklist');
         });
 
         checklistTabHistory.addEventListener('click', () => {
-            checklistTabHistory.className = 'px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 text-sm';
-            checklistTabCurrent.className = 'px-4 py-2 font-semibold text-gray-500 border-b-2 border-transparent text-sm';
-            checklistHistoryContent.classList.remove('hidden');
-            checklistCurrentContent.classList.add('hidden');
-            
-            // Hide photo section if visible
-            const photoSection = document.getElementById('photo-section');
-            if (photoSection && !photoSection.classList.contains('hidden')) {
-                photoSection.classList.add('hidden');
-            }
-            
+            setAuditTab('history');
             loadChecklistHistory();
         });
     }
@@ -64,6 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
             scPendingContent.classList.remove('hidden');
             scCompletedContent.classList.add('hidden');
             scHistoryContent.classList.add('hidden');
+            loadStockCountItems('', 1, false);
         });
 
         scTabCompleted.addEventListener('click', () => {
@@ -136,6 +161,12 @@ function updateSectionTick(section) {
     }
 }
 
+function resetChecklistCards() {
+    document.querySelectorAll('.section-card .status-icon').forEach(icon => {
+        icon.innerHTML = '';
+    });
+}
+
 function updateButtons() {
     const checklistContainer = document.getElementById('checklist-container');
     const sectionContent = document.getElementById('section-content');
@@ -181,6 +212,115 @@ function showPopup(message, type = "info", autoClose = true, redirect = null) {
                 if (redirect) window.location.href = redirect;
             }, 400);
         }, 2000);
+    }
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function formatTaskType(taskType) {
+    return taskType === 'stock_count' ? 'Stock Count' : 'Checklist Audit';
+}
+
+function renderAssignedTasks(tasks) {
+    const panel = document.getElementById('assigned-tasks-panel');
+    const list = document.getElementById('assigned-tasks-list');
+    const count = document.getElementById('assigned-tasks-count');
+    if (!panel || !list) return;
+
+    if (!tasks || tasks.length === 0) {
+        panel.classList.remove('hidden');
+        list.innerHTML = `
+            <div class="text-center py-8 text-gray-400">
+                <i class="fas fa-clipboard-check text-2xl mb-2"></i>
+                <p>No assigned tasks found.</p>
+            </div>
+        `;
+        if (count) {
+            count.textContent = '';
+            count.classList.add('hidden');
+        }
+        return;
+    }
+
+    panel.classList.remove('hidden');
+    if (count) {
+        count.textContent = String(tasks.length);
+        count.classList.remove('hidden');
+    }
+
+    list.innerHTML = tasks.map(task => {
+        const status = task.effective_status || task.status || 'Assigned';
+        const statusClass = status === 'Completed'
+            ? 'bg-green-100 text-green-700'
+            : status === 'Overdue'
+                ? 'bg-red-100 text-red-700'
+                : 'bg-yellow-100 text-yellow-700';
+        const typeClass = task.task_type === 'stock_count'
+            ? 'bg-blue-100 text-blue-700'
+            : 'bg-purple-100 text-purple-700';
+        const progress = Math.max(0, Math.min(100, Number(task.progress_percent || 0)));
+        const progressLabel = task.progress_label || `${progress}%`;
+        const progressColor = status === 'Completed'
+            ? 'bg-green-500'
+            : status === 'Overdue'
+                ? 'bg-red-500'
+                : 'bg-indigo-500';
+
+        return `
+            <div class="border border-gray-100 rounded-lg p-3 bg-gray-50">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="font-semibold text-gray-800 truncate">${escapeHtml(task.warehouse_name || 'Warehouse')}</div>
+                        <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${typeClass}">${formatTaskType(task.task_type)}</span>
+                            <span class="px-2 py-0.5 rounded-full text-xs font-semibold ${statusClass}">${escapeHtml(status)}</span>
+                            ${task.due_date ? `<span class="text-xs text-gray-500"><i class="far fa-calendar mr-1"></i>Due ${escapeHtml(task.due_date)}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        <span>Progress</span>
+                        <span class="font-semibold text-gray-700">${escapeHtml(progressLabel)}</span>
+                    </div>
+                    <div class="h-2 rounded-full bg-gray-200 overflow-hidden">
+                        <div class="${progressColor} h-full rounded-full" style="width:${progress}%"></div>
+                    </div>
+                </div>
+                ${task.notes ? `<div class="mt-2 text-sm text-gray-600">${escapeHtml(task.notes)}</div>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+async function loadAssignedTasks() {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+
+    const refreshIcon = document.querySelector('#assigned-tasks-refresh i');
+    if (refreshIcon) refreshIcon.classList.add('fa-spin');
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/user/my-tasks`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            renderAssignedTasks([]);
+            return;
+        }
+        renderAssignedTasks(data.data?.tasks || []);
+    } catch (err) {
+        console.error('Assigned tasks load error:', err);
+    } finally {
+        if (refreshIcon) refreshIcon.classList.remove('fa-spin');
     }
 }
 
@@ -259,6 +399,7 @@ if (backToDashboardButton) {
         document.getElementById('send-email-section').classList.add('hidden');
         document.getElementById('stock-count-section')?.classList.add('hidden');
         document.getElementById('upload-data-section')?.classList.add('hidden');
+        if (typeof window.selectAuditTab === 'function') window.selectAuditTab('checklist');
         const video = document.getElementById('video');
         if (video && video.srcObject) {
             video.srcObject.getTracks().forEach(track => track.stop());
@@ -274,7 +415,10 @@ if (backToDashboardButton) {
 // ─────────────────────────────────────────────────────────────────────────────
 if (document.getElementById('section-list')) {
     let sections = [];
-    document.addEventListener('DOMContentLoaded', loadDashboard);
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('assigned-tasks-refresh')?.addEventListener('click', loadAssignedTasks);
+        loadDashboard();
+    });
 
     async function loadDashboard(postSubmission = false) {
         const token = localStorage.getItem('access_token');
@@ -300,6 +444,7 @@ if (document.getElementById('section-list')) {
 
             document.getElementById('user-info').textContent = `Welcome, ${data.data.name}`;
             userRole = getUserRole(data.data.email);
+            loadAssignedTasks();
 
             try {
                 const adminRes = await fetch(`${API_BASE_URL}/api/check-admin`, { headers: { 'Authorization': `Bearer ${token}` } });
@@ -393,12 +538,16 @@ if (document.getElementById('section-list')) {
                             let dataRes;
                             try { dataRes = JSON.parse(text); } catch { showPopup('Failed to submit audit: Invalid server response'); return; }
                             if (!res.ok) { showPopup(dataRes.message || 'Failed to submit audit'); return; }
+                            
+                            const auditId = dataRes.data?.audit_id; // Extract audit_id from response
+                            
                             showPopup('Audit submitted successfully ✅', 'success');
                             completionStatus = {};
                             localStorage.removeItem('completionStatus');
+                            resetChecklistCards();
                             await clearAllSectionData();
                             await loadDashboard(true);
-                            openEmailModal('checklist');
+                            openEmailModal('checklist', auditId); // Pass audit_id
                         } catch (err) { showPopup('Error: ' + err.message); }
                     };
                 };
@@ -421,7 +570,18 @@ if (document.getElementById('section-list')) {
                 try { data = JSON.parse(text); } catch { data = {}; }
                 if (!resSections.ok) { showPopup(data.message || 'Unable to validate sections.', 'error'); exportBtn.disabled = false; exportBtn.textContent = 'Export to Excel'; return; }
                 const completion = data.data?.completion_status || {};
-                const allCompleted = Object.values(completion).every(v => v === true);
+                
+                // Only check the checklist sections, not stock_count or other keys
+                const checklistSections = [
+                    'general_report', 'stock_reconciliation',
+                    'observations_on_stacking', 'observations_on_warehouse_operations',
+                    'observations_on_warehouse_record_keeping', 'observations_on_wh_infrastructure',
+                    'observations_on_quality_operation', 'checklist_wrt_exchange_circular_mentha_oil',
+                    'checklist_wrt_exchange_circular_metal', 'checklist_wrt_exchange_circular_cotton_bales',
+                    'signature', 'photo'
+                ];
+                const allCompleted = checklistSections.every(s => completion[s] === true);
+                
                 if (!allCompleted) { showPopup('Please complete all sections before exporting.', 'warning'); exportBtn.disabled = false; exportBtn.textContent = 'Export to Excel'; return; }
                 exportBtn.textContent = 'Preparing Excel file...';
                 const res = await fetch(`${API_BASE_URL}/api/export-excel`, { method: 'GET', headers: { 'Authorization': `Bearer ${token}` } });
@@ -1518,12 +1678,15 @@ if (document.getElementById('section-list')) {
             }
         } else {
             data.questions = [];
-            const remarksInputs = document.querySelectorAll('[id^="remarks"]');
+            // Only select remarks inputs within the current section form
+            const sectionForm = document.getElementById('section-form');
+            const remarksInputs = sectionForm ? sectionForm.querySelectorAll('[id^="remarks"]') : [];
             let allAnswered = true;
             let unansweredQuestions = [];
             
             remarksInputs.forEach((input, i) => {
-                const radios = document.querySelectorAll(`input[name="q${i}"]`);
+                // Only look for radios within the section form
+                const radios = sectionForm ? sectionForm.querySelectorAll(`input[name="q${i}"]`) : [];
                 const questionDiv = input.closest('.mb-4');
                 let answer = ''; let isAnswered = false;
                 radios.forEach(r => { if (r.checked) { answer = r.value; isAnswered = true; } });
@@ -1637,6 +1800,7 @@ if (navChecklist) {
         document.getElementById('checklist-container')?.classList.remove('hidden');
         document.getElementById('photo-section')?.classList.add('hidden');
         document.getElementById('signature-section')?.classList.add('hidden');
+        if (typeof window.selectAuditTab === 'function') window.selectAuditTab('checklist');
     };
 }
 
@@ -1670,29 +1834,140 @@ if (navStockCount) {
 // ─────────────────────────────────────────────────────────────────────────────
 //  SEND EMAIL
 // ─────────────────────────────────────────────────────────────────────────────
+//  SEND EMAIL - Multiple Files Support
+// ─────────────────────────────────────────────────────────────────────────────
 const sendEmailForm = document.getElementById('send-email-form');
 if (sendEmailForm) {
+    const fileInput = document.getElementById('email-file');
+    const filesList = document.getElementById('selected-files-list');
+    
+    // Show selected files
+    if (fileInput) {
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                filesList.classList.remove('hidden');
+                filesList.innerHTML = Array.from(fileInput.files).map((file, idx) => {
+                    const fileIcon = file.type.includes('pdf') ? 'fa-file-pdf text-red-500' : 'fa-file-excel text-green-500';
+                    const fileSize = (file.size / 1024).toFixed(1);
+                    return `
+                        <div class="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                            <div class="flex items-center gap-2 flex-1 min-w-0">
+                                <i class="fas ${fileIcon}"></i>
+                                <span class="text-sm text-gray-700 truncate">${file.name}</span>
+                                <span class="text-xs text-gray-500">(${fileSize} KB)</span>
+                            </div>
+                            <button type="button" onclick="removeFileFromInput(${idx})" class="text-red-500 hover:text-red-700 ml-2">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                filesList.classList.add('hidden');
+            }
+        });
+    }
+    
     sendEmailForm.onsubmit = async (e) => {
         e.preventDefault();
         const token = localStorage.getItem('access_token');
         if (!token) return showPopup('Please login first.', 'warning');
+        
         const to = document.getElementById('email-to').value.trim();
-        const fileInput = document.getElementById('email-file');
+        const subject = document.getElementById('email-subject').value.trim();
+        const body = document.getElementById('email-body').value.trim();
         const sendBtn = sendEmailForm.querySelector('button[type="submit"]');
-        if (fileInput.files.length === 0) { showPopup('Please upload a PDF file.', 'warning'); return; }
-        sendBtn.disabled = true; sendBtn.textContent = "Sending Email...";
+        
+        if (!to) {
+            showPopup('Please enter recipient email address.', 'warning');
+            return;
+        }
+        
+        if (fileInput.files.length === 0) { 
+            showPopup('Please upload at least one file.', 'warning'); 
+            return; 
+        }
+        
+        // Validate file types
+        const allowedTypes = ['.pdf', '.xlsx', '.xls', '.xlsb'];
+        const invalidFiles = Array.from(fileInput.files).filter(file => {
+            return !allowedTypes.some(ext => file.name.toLowerCase().endsWith(ext));
+        });
+        
+        if (invalidFiles.length > 0) {
+            showPopup(`Invalid file type(s): ${invalidFiles.map(f => f.name).join(', ')}. Only PDF and Excel files allowed.`, 'error');
+            return;
+        }
+        
+        sendBtn.disabled = true; 
+        sendBtn.textContent = `Sending ${fileInput.files.length} file(s)...`;
+        
         const formData = new FormData();
-        formData.append('to_email', to); formData.append('attachment', fileInput.files[0]);
+        formData.append('to_email', to);
+        formData.append('email_type', 'manual');
+        
+        // Add subject and body if provided
+        if (subject) {
+            formData.append('email_subject', subject);
+        }
+        if (body) {
+            formData.append('email_body', body);
+        }
+        
+        // Append all files
+        Array.from(fileInput.files).forEach((file, index) => {
+            formData.append('attachments', file);
+        });
+        
         try {
-            const res = await fetch(`${API_BASE_URL}/api/send-email`, { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
-            const text = await res.text(); let data = {}; try { data = JSON.parse(text); } catch { }
-            sendBtn.disabled = false; sendBtn.textContent = 'Send Email';
-            if (!res.ok) { showPopup(data.message || 'Failed to send email', 'error'); return; }
-            document.getElementById('email-to').value = ''; document.getElementById('email-file').value = '';
-            showPopup('Email sent successfully ✅', 'success');
-        } catch (err) { sendBtn.disabled = false; sendBtn.textContent = 'Send Email'; showPopup('Error sending email: ' + err.message, 'error'); }
+            const res = await fetch(`${API_BASE_URL}/api/send-email`, { 
+                method: 'POST', 
+                headers: { 'Authorization': `Bearer ${token}` }, 
+                body: formData 
+            });
+            const text = await res.text(); 
+            let data = {}; 
+            try { data = JSON.parse(text); } catch { }
+            
+            sendBtn.disabled = false; 
+            sendBtn.textContent = 'Send Email';
+            
+            if (!res.ok) { 
+                showPopup(data.message || 'Failed to send email', 'error'); 
+                return; 
+            }
+            
+            // Clear form
+            document.getElementById('email-to').value = '';
+            document.getElementById('email-subject').value = '';
+            document.getElementById('email-body').value = '';
+            document.getElementById('email-file').value = '';
+            filesList.classList.add('hidden');
+            filesList.innerHTML = '';
+            
+            showPopup(`Email sent successfully with ${fileInput.files.length} file(s) ✅`, 'success');
+        } catch (err) { 
+            sendBtn.disabled = false; 
+            sendBtn.textContent = 'Send Email'; 
+            showPopup('Error sending email: ' + err.message, 'error'); 
+        }
     };
 }
+
+// Helper function to remove file from input
+window.removeFileFromInput = function(indexToRemove) {
+    const fileInput = document.getElementById('email-file');
+    const dt = new DataTransfer();
+    
+    Array.from(fileInput.files).forEach((file, index) => {
+        if (index !== indexToRemove) {
+            dt.items.add(file);
+        }
+    });
+    
+    fileInput.files = dt.files;
+    fileInput.dispatchEvent(new Event('change'));
+};
 
 document.addEventListener("DOMContentLoaded", () => {
     const goRegister = document.getElementById("go-register");
@@ -1716,29 +1991,83 @@ async function clearAllSectionData() {
 
 
 // ═════════════════════════════════════════════════════════════════════════════
-//  STOCK COUNT  (sheet-aware)
+//  STOCK COUNT  (sheet-aware with pagination)
 // ═════════════════════════════════════════════════════════════════════════════
 let stockItems = [];
 let filteredStockItems = [];
 let activeSheetFilter = '__all__';
+let currentPage = 1;
+let hasMoreItems = false;
+let isLoadingMore = false;
+let stockItemsPage = 1;
+const STOCK_ITEMS_PAGE_SIZE = 10;
 
-async function loadStockCountItems(searchQuery = '') {
+async function loadStockCountItems(searchQuery = '', page = 1, append = false) {
     const token = localStorage.getItem('access_token');
     if (!token) return;
+    
+    if (isLoadingMore) return; // Prevent duplicate requests
+    isLoadingMore = true;
+    
     try {
-        const url = searchQuery
-            ? `${API_BASE_URL}/api/get-items?search=${encodeURIComponent(searchQuery)}`
-            : `${API_BASE_URL}/api/get-items`;
+        let url = `${API_BASE_URL}/api/get-items?page=${page}&limit=5000`;
+        if (searchQuery) {
+            url += `&search=${encodeURIComponent(searchQuery)}`;
+        }
+        
         const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
         const text = await res.text();
         let data = {};
         try { data = JSON.parse(text); } catch { }
         if (!res.ok) { showPopup(data.message || 'Failed to load items', 'error'); return; }
-        stockItems = data.data.items;
+        
+        const newItems = data.data.items;
+        currentPage = data.data.page || page;
+        hasMoreItems = data.data.has_more || false;
+        
+        if (append) {
+            stockItems = [...stockItems, ...newItems];
+        } else {
+            stockItems = newItems;
+            stockItemsPage = 1;
+        }
+        
         filteredStockItems = stockItems;
         buildSheetTabs();
         renderStockItems();
-    } catch (err) { showPopup('Error loading items: ' + err.message, 'error'); }
+        updateLoadMoreButton();
+    } catch (err) { 
+        showPopup('Error loading items: ' + err.message, 'error'); 
+    } finally {
+        isLoadingMore = false;
+    }
+}
+
+function updateLoadMoreButton() {
+    let loadMoreBtn = document.getElementById('load-more-stock-items');
+    if (!loadMoreBtn) {
+        // Create the button if it doesn't exist
+        const listContainer = document.getElementById('stock-items-list');
+        if (!listContainer) return;
+        
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'flex justify-center my-4';
+        btnContainer.innerHTML = '<button id="load-more-stock-items" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold">Load More</button>';
+        listContainer.parentElement.appendChild(btnContainer);
+        
+        loadMoreBtn = document.getElementById('load-more-stock-items');
+        loadMoreBtn.onclick = async () => {
+            loadMoreBtn.disabled = true;
+            loadMoreBtn.textContent = 'Loading...';
+            const searchQuery = document.getElementById('stock-search')?.value.toLowerCase().trim() || '';
+            await loadStockCountItems(searchQuery, currentPage + 1, true);
+            loadMoreBtn.disabled = false;
+            loadMoreBtn.textContent = 'Load More';
+        };
+    }
+    
+    // Show/hide based on hasMoreItems
+    loadMoreBtn.parentElement.style.display = hasMoreItems ? 'flex' : 'none';
 }
 
 /** Build sheet tab bar from unique sheet_name values in stockItems */
@@ -1760,6 +2089,7 @@ function buildSheetTabs() {
         btn.dataset.sheet = value;
         btn.onclick = () => {
             activeSheetFilter = value;
+            stockItemsPage = 1;
             // re-apply current search
             const query = document.getElementById('stock-search')?.value.toLowerCase().trim() || '';
             applyStockFilter(query);
@@ -1777,7 +2107,8 @@ function buildSheetTabs() {
     sheets.forEach(s => tabBar.appendChild(makeTab(s, s)));
 }
 
-function applyStockFilter(query) {
+function applyStockFilter(query, resetPage = true) {
+    if (resetPage) stockItemsPage = 1;
     filteredStockItems = stockItems.filter(item => {
         const matchSheet = activeSheetFilter === '__all__' || item.sheet_name === activeSheetFilter;
         const matchSearch = !query ||
@@ -1788,6 +2119,48 @@ function applyStockFilter(query) {
     renderStockItems();
 }
 
+function renderStockItemsPagination(totalItems) {
+    const container = document.getElementById('stock-items-pagination');
+    if (!container) return;
+
+    const totalPages = Math.max(1, Math.ceil(totalItems / STOCK_ITEMS_PAGE_SIZE));
+    stockItemsPage = Math.min(stockItemsPage, totalPages);
+
+    if (totalItems <= STOCK_ITEMS_PAGE_SIZE) {
+        container.innerHTML = totalItems
+            ? `<div class="text-sm text-gray-500">Showing all ${totalItems} items</div>`
+            : '';
+        return;
+    }
+
+    const from = (stockItemsPage - 1) * STOCK_ITEMS_PAGE_SIZE + 1;
+    const to = Math.min(stockItemsPage * STOCK_ITEMS_PAGE_SIZE, totalItems);
+    container.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white border rounded-lg px-4 py-3">
+            <div class="text-sm text-gray-600">Showing ${from}-${to} of ${totalItems} items</div>
+            <div class="flex items-center gap-2">
+                <button type="button" onclick="changeStockItemsPage(${stockItemsPage - 1})"
+                    ${stockItemsPage <= 1 ? 'disabled' : ''}
+                    class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fas fa-chevron-left mr-1"></i>Previous
+                </button>
+                <span class="text-sm font-semibold text-gray-700">Page ${stockItemsPage} / ${totalPages}</span>
+                <button type="button" onclick="changeStockItemsPage(${stockItemsPage + 1})"
+                    ${stockItemsPage >= totalPages ? 'disabled' : ''}
+                    class="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Next<i class="fas fa-chevron-right ml-1"></i>
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+window.changeStockItemsPage = function (page) {
+    const totalPages = Math.max(1, Math.ceil(filteredStockItems.length / STOCK_ITEMS_PAGE_SIZE));
+    stockItemsPage = Math.min(Math.max(1, page), totalPages);
+    renderStockItems();
+};
+
 function renderStockItems() {
     const listContainer = document.getElementById('stock-items-list');
     if (!listContainer) return;
@@ -1795,6 +2168,7 @@ function renderStockItems() {
 
     if (filteredStockItems.length === 0) {
         listContainer.innerHTML = '<p class="text-gray-500 text-center py-4">No items found. Please ask your manager to upload item data.</p>';
+        renderStockItemsPagination(0);
         return;
     }
 
@@ -1802,7 +2176,13 @@ function renderStockItems() {
     const sheets = [...new Set(filteredStockItems.map(i => i.sheet_name).filter(Boolean))];
     const isGrouped = sheets.length > 1;
 
-    filteredStockItems.forEach((item, index) => {
+    const totalPages = Math.max(1, Math.ceil(filteredStockItems.length / STOCK_ITEMS_PAGE_SIZE));
+    stockItemsPage = Math.min(stockItemsPage, totalPages);
+    const startIndex = (stockItemsPage - 1) * STOCK_ITEMS_PAGE_SIZE;
+    const pageItems = filteredStockItems.slice(startIndex, startIndex + STOCK_ITEMS_PAGE_SIZE);
+
+    pageItems.forEach((item, pageIndex) => {
+        const index = startIndex + pageIndex;
         const itemCard = document.createElement('div');
         itemCard.className = 'bg-white border rounded-lg shadow-sm';
         itemCard.id = `stock-item-${index}`;
@@ -1851,6 +2231,7 @@ function renderStockItems() {
 
         document.getElementById(`save-stock-item-${index}`).onclick = async () => saveStockItem(item, index);
     });
+    renderStockItemsPagination(filteredStockItems.length);
 }
 
 async function saveStockItem(item, index) {
@@ -1869,7 +2250,7 @@ async function saveStockItem(item, index) {
         showPopup('Item saved successfully ✅', 'success');
         item.physical_amount = physicalAmount; item.remarks = remarks;
         const query = document.getElementById('stock-search')?.value.toLowerCase().trim() || '';
-        applyStockFilter(query);
+        applyStockFilter(query, false);
     } catch (err) { showPopup('Error saving: ' + err.message, 'error'); }
 }
 
@@ -1901,10 +2282,19 @@ if (submitStockCountBtn) {
                 });
                 const text = await res.text(); let data = {}; try { data = JSON.parse(text); } catch { }
                 if (!res.ok) { showPopup(data.message || 'Failed to submit', 'error'); return; }
+                
                 showPopup('Stock count submitted successfully ✅', 'success');
+                stockItems = [];
+                filteredStockItems = [];
+                renderStockItems();
+                
+                // Get audit_id from response
+                const auditId = data.data?.audit_id;
                 
                 // Stay on stock count page and switch to Completed tab
                 document.getElementById('sc-tab-completed')?.click();
+                
+                askStockCountEmail(auditId);
             } catch (err) { showPopup('Error submitting: ' + err.message, 'error'); }
         };
     };
@@ -1921,9 +2311,17 @@ if (exportStockCountBtn) {
             const res = await fetch(`${API_BASE_URL}/api/export-stock-count-excel`, { method: 'GET', headers: { 'Authorization': `Bearer ${token}` } });
             if (!res.ok) { let msg = await res.text(); try { msg = JSON.parse(msg).message; } catch { } showPopup(msg || 'Failed to export document.', 'error'); return; }
             const blob = await res.blob();
+            const contentDisposition = res.headers.get('Content-Disposition');
+            let filename = 'Stock_Count_Report.xlsx';
+            if (contentDisposition) {
+                const matches = /filename\*?=(?:UTF-8'')?([^;]+)/.exec(contentDisposition);
+                if (matches && matches[1]) {
+                    filename = decodeURIComponent(matches[1].replace(/['"]/g, ''));
+                }
+            }
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = 'Stock_Count_Report.xlsx';
+            a.href = url; a.download = filename;
             document.body.appendChild(a); a.click(); a.remove();
             window.URL.revokeObjectURL(url);
             showPopup('Download started successfully.', 'success');
@@ -1932,13 +2330,18 @@ if (exportStockCountBtn) {
     };
 }
 
-function openEmailModal(type) {
+function openEmailModal(type, auditId = null) {
     const modal = document.getElementById('email-modal');
     modal.classList.remove('hidden');
+    const subjectInput = document.getElementById('modal-email-subject');
+    const bodyInput = document.getElementById('modal-email-body');
+    if (subjectInput) subjectInput.value = '';
+    if (bodyInput) bodyInput.value = '';
     document.getElementById('btn-email-close').onclick = () => modal.classList.add('hidden');
 
     document.getElementById('btn-send-modal-email').onclick = async () => {
         const toEmail = document.getElementById('modal-email-to').value.trim();
+        const subjectTxt = document.getElementById('modal-email-subject')?.value.trim() || '';
         const bodyTxt = document.getElementById('modal-email-body').value.trim();
         if (!toEmail) { showPopup('Manager Email is required.', 'warning'); return; }
 
@@ -1948,17 +2351,14 @@ function openEmailModal(type) {
         btn.textContent = 'Generating Excel & Sending...';
 
         try {
-            const endpoint = type === 'checklist' ? '/api/export-excel' : '/api/export-stock-count-excel';
-            const resExcel = await fetch(`${API_BASE_URL}${endpoint}`, { method: 'GET', headers: { 'Authorization': `Bearer ${token}` } });
-            if (!resExcel.ok) { throw new Error('Failed to generate excel attachment.'); }
-            const blob = await resExcel.blob();
-            const filename = type === 'checklist' ? 'Checklist_Audit.xlsx' : 'Stock_Count.xlsx';
-            const file = new File([blob], filename, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-
             const formData = new FormData();
             formData.append('to_email', toEmail);
-            formData.append('attachment', file);
             formData.append('email_type', type === 'checklist' ? 'checklist' : 'stock-count');
+            if (subjectTxt) formData.append('email_subject', subjectTxt);
+            if (bodyTxt) formData.append('email_body', bodyTxt);
+            if (auditId) {
+                formData.append('audit_id', auditId); // Pass audit_id to backend
+            }
 
             const res = await fetch(`${API_BASE_URL}/api/send-email`, {
                 method: 'POST',
@@ -1977,7 +2377,7 @@ function openEmailModal(type) {
     };
 }
 
-document.getElementById('nav-stock-count').addEventListener('click', () => {
+document.getElementById('nav-stock-count')?.addEventListener('click', () => {
     // Always load items for Pending tab when Stock Count section opens
     setTimeout(() => loadStockCountItems(), 100);
 });
@@ -2100,6 +2500,10 @@ async function loadStockCountHistory(tab) {
                             </div>
                             <div class="flex items-center gap-2">
                                 <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Completed</span>
+                                <button onclick="event.stopPropagation(); showStockCountEmailModal('${c.audit_id}')"
+                                    class="px-2 py-1 rounded-lg text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center gap-1">
+                                    <i class="fas fa-envelope"></i> Email
+                                </button>
                                 <button onclick="event.stopPropagation(); downloadStockCountExcel('${c.audit_id}')"
                                     class="px-2 py-1 rounded-lg text-xs font-semibold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 flex items-center gap-1">
                                     <i class="fas fa-download"></i> Excel
@@ -2142,6 +2546,10 @@ async function loadStockCountHistory(tab) {
                             </div>
                             <div class="flex items-center gap-2">
                                 <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Submitted</span>
+                                <button onclick="event.stopPropagation(); showStockCountEmailModal('${h.audit_id}')"
+                                    class="px-2 py-1 rounded-lg text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center gap-1">
+                                    <i class="fas fa-envelope"></i> Email
+                                </button>
                                 <button onclick="event.stopPropagation(); downloadStockCountExcel('${h.audit_id}')"
                                     class="px-2 py-1 rounded-lg text-xs font-semibold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 flex items-center gap-1">
                                     <i class="fas fa-download"></i> Excel
@@ -2251,4 +2659,103 @@ async function downloadStockCountExcel(audit_id) {
         window.URL.revokeObjectURL(url);
         showPopup('Download started.', 'success');
     } catch (err) { showPopup('Error: ' + err.message, 'error'); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  STOCK COUNT EMAIL FUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+let currentStockCountAuditId = null;
+
+function askStockCountEmail(auditId) {
+    if (!auditId) return;
+
+    document.getElementById('confirm-submit-msg').textContent = 'Would you like to send this stock count via email?';
+    const confirmModal = document.getElementById('confirm-submit-modal');
+    confirmModal.classList.remove('hidden');
+
+    document.getElementById('btn-submit-no').onclick = () => {
+        confirmModal.classList.add('hidden');
+    };
+    document.getElementById('btn-submit-yes').onclick = () => {
+        confirmModal.classList.add('hidden');
+        showStockCountEmailModal(auditId);
+    };
+}
+
+function showStockCountEmailModal(auditId) {
+    currentStockCountAuditId = auditId;
+    const modal = document.getElementById('stock-count-email-modal');
+    modal.classList.remove('hidden');
+    document.getElementById('sc-email-to').value = '';
+    document.getElementById('sc-email-subject').value = '';
+    document.getElementById('sc-email-body').value = '';
+    
+    // Setup close button
+    document.getElementById('btn-sc-email-close').onclick = () => {
+        closeStockCountEmailModal();
+    };
+    
+    // Setup send button
+    document.getElementById('btn-send-sc-email').onclick = sendStockCountEmail;
+}
+
+function closeStockCountEmailModal() {
+    const modal = document.getElementById('stock-count-email-modal');
+    modal.classList.add('hidden');
+    document.getElementById('sc-email-to').value = '';
+    document.getElementById('sc-email-subject').value = '';
+    document.getElementById('sc-email-body').value = '';
+    currentStockCountAuditId = null;
+}
+
+async function sendStockCountEmail() {
+    const toEmail = document.getElementById('sc-email-to').value.trim();
+    const subject = document.getElementById('sc-email-subject').value.trim();
+    const body = document.getElementById('sc-email-body').value.trim();
+    
+    if (!toEmail) {
+        showPopup('Please enter recipient email', 'error');
+        return;
+    }
+    
+    if (!currentStockCountAuditId) {
+        showPopup('No audit selected', 'error');
+        return;
+    }
+    
+    const btn = document.getElementById('btn-send-sc-email');
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Generating Excel & Sending...';
+    
+    try {
+        const token = localStorage.getItem('access_token');
+        const formData = new FormData();
+        formData.append('audit_id', currentStockCountAuditId);
+        formData.append('to_email', toEmail);
+        formData.append('email_type', 'stock-count');
+        if (subject) formData.append('email_subject', subject);
+        if (body) formData.append('email_body', body);
+        
+        const res = await fetch(`${API_BASE_URL}/api/send-email`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            showPopup('Email sent successfully! ✅', 'success');
+            closeStockCountEmailModal();
+        } else {
+            showPopup(data.message || 'Failed to send email', 'error');
+        }
+    } catch (err) {
+        showPopup('Error: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
 }

@@ -13,7 +13,7 @@ import requests
 from app.auth import *
 from app.database import *
 from app.database import fs
-from app.database import fs, warehouse_master_collection, task_assignments_collection
+from app.database import fs, warehouse_master_collection
 from app.models import AuditForm, UserLogin, UserRegister
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 import io
@@ -23,8 +23,6 @@ import base64, re
 from docx.shared import Inches
 import smtplib
 from email.message import EmailMessage
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 import tempfile
 from fastapi import UploadFile, Form
 from fastapi import FastAPI, Depends, Form, File, UploadFile, HTTPException
@@ -58,28 +56,6 @@ from pydantic import BaseModel
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# User name cache to avoid repeated database queries
-USER_NAME_CACHE = {}
-CACHE_TIMESTAMP = None
-
-def get_user_names_cached(user_emails):
-    """Get user names with caching to improve performance."""
-    global USER_NAME_CACHE, CACHE_TIMESTAMP
-    from datetime import datetime, timedelta
-    
-    # Refresh cache every 10 minutes or if empty
-    if not CACHE_TIMESTAMP or datetime.now(timezone.utc) - CACHE_TIMESTAMP > timedelta(minutes=10) or not USER_NAME_CACHE:
-        try:
-            all_users = list(users.find({}, {"_id": 0, "email": 1, "name": 1}))
-            USER_NAME_CACHE = {u["email"]: u.get("name", u["email"]) for u in all_users if u.get("email")}
-            CACHE_TIMESTAMP = datetime.now(timezone.utc)
-            logger.info(f"User name cache refreshed: {len(USER_NAME_CACHE)} users")
-        except Exception as e:
-            logger.error(f"Failed to refresh user name cache: {e}")
-            return {email: email for email in user_emails}  # Fallback to emails
-    
-    return {email: USER_NAME_CACHE.get(email, email) for email in user_emails if email}
 
 load_dotenv()
 
@@ -224,11 +200,7 @@ async def logout(emp_id: str = Depends(get_current_user)):
 async def get_sections(emp_id: str = Depends(get_current_user)):
     try:
         today = datetime.now(timezone.utc).date().isoformat()
-        # Check temp collection first, then submitted collection
         audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
-        if not audit:
-            audit = audit_data_collection.find_one({"user_id": emp_id, "date": today})
-        
         section_keys = [
             "general_report", "stock_reconciliation",
             "observations_on_stacking", "observations_on_warehouse_operations",
@@ -353,32 +325,14 @@ async def submit_audit(emp_id: str = Depends(get_current_user)):
         temp_audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
         if not temp_audit:
             raise HTTPException(status_code=404, detail="No audit data found to submit")
-        
-        # Check only the expected checklist sections (not stock_count or other keys)
-        completion = temp_audit.get("completion_status", {})
-        expected = [
-            "general_report", "stock_reconciliation",
-            "observations_on_stacking", "observations_on_warehouse_operations",
-            "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
-            "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
-            "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
-            "signature", "photo"
-        ]
-        if not all(completion.get(s, False) for s in expected):
+        if not all(temp_audit.get("completion_status", {}).values()):
             raise HTTPException(status_code=400, detail="Not all sections are completed")
         
         # Update submitted_at timestamp to the actual submission time
         temp_audit["submitted_at"] = datetime.now(timezone.utc)
         
-        # Remove the _id from temp_audit to avoid duplicate key error
-        temp_id = temp_audit.pop("_id")
-        
-        # Insert into permanent collection (MongoDB will generate new _id)
         result = audit_data_collection.insert_one(temp_audit)
-        
-        # Delete from temp collection using the original _id
-        temp_audit_data_collection.delete_one({"_id": temp_id})
-        
+        temp_audit_data_collection.delete_one({"_id": temp_audit["_id"]})
         response = base_response.copy()
         response.update({
             "message": "Audit submitted successfully", "success": True,
@@ -662,24 +616,12 @@ async def generate_excel_bytes(emp_id: str, audit_data: dict) -> bytes:
 async def export_excel(emp_id: str = Depends(get_current_user)):
     try:
         today = datetime.now(timezone.utc).date().isoformat()
-        
-        # Look specifically for checklist audit (has 'sections' field, not just stock_count)
-        audit_data = temp_audit_data_collection.find_one({
-            "user_id": emp_id, 
-            "date": today,
-            "sections": {"$exists": True}
-        }, sort=[("submitted_at", -1)])
-        
+        # Check temp collection first (audit in progress), then submitted collection
+        audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
         if not audit_data:
-            audit_data = audit_data_collection.find_one({
-                "user_id": emp_id, 
-                "date": today,
-                "sections": {"$exists": True}
-            }, sort=[("submitted_at", -1)])
-        
+            audit_data = audit_data_collection.find_one({"user_id": emp_id, "date": today})
         if not audit_data:
-            return JSONResponse({"message": "No checklist audit data for today", "success": False}, status_code=404)
-        
+            return JSONResponse({"message": "No audit data for today", "success": False}, status_code=404)
         completion = audit_data.get("completion_status", {})
         expected = [
             "general_report", "stock_reconciliation",
@@ -689,16 +631,8 @@ async def export_excel(emp_id: str = Depends(get_current_user)):
             "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
             "signature", "photo"
         ]
-        
-        # Check which sections are missing
-        missing_sections = [s for s in expected if not completion.get(s, False)]
-        if missing_sections:
-            logger.error(f"Export failed - Missing sections: {missing_sections}, completion_status: {completion}")
-            return JSONResponse({
-                "message": f"Complete all sections before exporting. Missing: {', '.join(missing_sections)}", 
-                "success": False
-            }, status_code=400)
-        
+        if not all(completion.get(s, False) for s in expected):
+            return JSONResponse({"message": "Complete all sections before exporting", "success": False}, status_code=400)
         excel_bytes = await generate_excel_bytes(emp_id, audit_data)
         filename = f"audit_{emp_id}_{today}.xlsx"
         return StreamingResponse(
@@ -715,78 +649,10 @@ async def export_excel(emp_id: str = Depends(get_current_user)):
 #  SEND EMAIL
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  HELPER FUNCTION: Send Email
-# ─────────────────────────────────────────────────────────────────────────────
-
-def send_email_notification(to_emails: list, subject: str, body: str, attachments: list = None):
-    """
-    Helper function to send emails with attachments.
-    
-    Args:
-        to_emails: List of recipient email addresses
-        subject: Email subject
-        body: HTML email body
-        attachments: List of tuples (filename, file_bytes, mime_subtype)
-    
-    Returns:
-        tuple: (success: bool, message: str)
-    """
-    try:
-        mail_username = os.getenv("MAIL_USERNAME")
-        mail_password = os.getenv("MAIL_PASSWORD")
-        
-        if not mail_username or not mail_password:
-            return False, "Email credentials not configured"
-        
-        # Create message
-        msg = MIMEMultipart()
-        msg["From"] = mail_username
-        msg["To"] = ", ".join(to_emails)
-        msg["Subject"] = subject
-        
-        # Attach HTML body
-        msg.attach(MIMEText(body, "html"))
-        
-        # Attach files if provided
-        if attachments:
-            for filename, file_bytes, mime_subtype in attachments:
-                msg.add_attachment(
-                    file_bytes,
-                    maintype="application",
-                    subtype=mime_subtype,
-                    filename=filename
-                )
-        
-        # Send email
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.ehlo()
-            smtp.login(mail_username, mail_password)
-            smtp.send_message(msg)
-        
-        return True, "Email sent successfully"
-        
-    except smtplib.SMTPAuthenticationError as auth_err:
-        logger.error(f"SMTP Authentication failed: {auth_err}")
-        return False, f"Email authentication failed: {str(auth_err)}"
-    except Exception as e:
-        logger.error(f"Email send error: {e}")
-        return False, f"Failed to send email: {str(e)}"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  SEND EMAIL API ENDPOINT
-# ─────────────────────────────────────────────────────────────────────────────
-
 @app.post("/api/send-email")
 async def send_email(
     to_email: str = Form(...),
-    email_subject: Optional[str] = Form(default=None),  # Custom subject
-    email_body: Optional[str] = Form(default=None),  # Custom body/message
-    attachment: Optional[UploadFile] = File(default=None),  # Keep for backward compatibility
-    attachments: List[UploadFile] = File(default=[]),  # New: multiple files support
+    attachment: Optional[UploadFile] = File(default=None),
     email_type: str = Form(default="checklist"),   # "checklist" or "stock-count"
     audit_id: Optional[str] = Form(default=None),
     emp_id: str = Depends(get_current_user)
@@ -809,33 +675,9 @@ async def send_email(
             if not audit_data:
                 audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "_id": ObjectId(audit_id)})
         else:
-            # When no audit_id, find the most recent audit of the correct type for today
-            if email_type == "stock-count":
-                # Find audit with stock_count data
-                audit_data = audit_data_collection.find_one({
-                    "user_id": emp_id, 
-                    "date": today,
-                    "stock_count_data": {"$exists": True}
-                }, sort=[("submitted_at", -1)])
-                if not audit_data:
-                    audit_data = temp_audit_data_collection.find_one({
-                        "user_id": emp_id, 
-                        "date": today,
-                        "stock_count_data": {"$exists": True}
-                    }, sort=[("submitted_at", -1)])
-            else:
-                # Find audit with checklist sections data
-                audit_data = audit_data_collection.find_one({
-                    "user_id": emp_id, 
-                    "date": today,
-                    "sections": {"$exists": True}
-                }, sort=[("submitted_at", -1)])
-                if not audit_data:
-                    audit_data = temp_audit_data_collection.find_one({
-                        "user_id": emp_id, 
-                        "date": today,
-                        "sections": {"$exists": True}
-                    }, sort=[("submitted_at", -1)])
+            audit_data = audit_data_collection.find_one({"user_id": emp_id, "date": today})
+            if not audit_data:
+                audit_data = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})
 
         if not audit_data:
             return JSONResponse({"message": "No audit data found to email", "success": False}, status_code=404)
@@ -879,94 +721,40 @@ async def send_email(
                 return JSONResponse({"message": "Complete all checklist sections before sending email", "success": False}, status_code=400)
             excel_bytes = await generate_excel_bytes(emp_id, audit_data)
             excel_name = f"Checklist_Audit_{target_date}.xlsx"
-            
-            # Use custom subject/body if provided, otherwise use defaults
-            if not email_subject:
-                subject = f"Checklist Audit Report – {target_date} – {user_name}"
-            else:
-                subject = email_subject
-                
-            if not email_body:
-                body = f"Dear Auditor Manager,\n\nPlease find the Checklist Audit report attached.\n\nRegards,\n{user_name}\nAudit App"
-            else:
-                body = email_body
+            subject = f"Checklist Audit Report – {target_date} – {user_name}"
+            body = f"Dear Auditor Manager,\n\nPlease find the Checklist Audit report attached.\n\nRegards,\n{user_name}\nAudit App"
 
         msg = EmailMessage()
-        msg["Subject"] = subject if email_subject or audit_id or audit_data else (email_subject or "Documents from Audit App")
+        msg["Subject"] = subject
         msg["From"] = os.getenv("MAIL_USERNAME")
         msg["To"] = to_email
         msg["Cc"] = emp_id
         msg.set_content(body)
 
-        # Attach user-uploaded files (support both single 'attachment' and multiple 'attachments')
-        files_to_attach = []
-        
-        # Handle single file (backward compatibility)
+        # Only attach user-uploaded file if provided (don't attach the generated Excel twice)
         if attachment:
-            files_to_attach.append(attachment)
-        
-        # Handle multiple files (new feature)
-        if attachments:
-            files_to_attach.extend(attachments)
-        
-        # Attach all user-uploaded files
-        for uploaded_file in files_to_attach:
-            file_bytes = await uploaded_file.read()
-            file_name = uploaded_file.filename
-            allowed_extensions = (".pdf", ".xlsx", ".xls", ".xlsb")
-            
-            if not file_name.lower().endswith(allowed_extensions):
-                return JSONResponse({
-                    "message": f"File '{file_name}' has invalid type. Only PDF or Excel files are allowed", 
-                    "success": False
-                }, status_code=400)
-            
-            # Determine MIME type
-            if file_name.lower().endswith('.pdf'):
-                subtype = "pdf"
-            else:
-                subtype = "vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            attachment_bytes = await attachment.read()
+            attachment_name = attachment.filename
+            allowed_extensions = (".pdf", ".xlsx", ".xls")
+            if not attachment_name.lower().endswith(allowed_extensions):
+                return JSONResponse({"message": "Only PDF or Excel files are allowed", "success": False}, status_code=400)
             
             msg.add_attachment(
-                file_bytes, 
+                attachment_bytes, 
                 maintype="application",
-                subtype=subtype, 
-                filename=file_name
+                subtype="pdf" if attachment_name.lower().endswith('.pdf') else "vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+                filename=attachment_name
             )
 
-        # Always attach the generated excel sheet (if this is checklist/stock-count email with audit_id)
-        if email_type in ['checklist', 'stock-count'] and (audit_id or audit_data):
-            msg.add_attachment(
-                excel_bytes, 
-                maintype="application",
-                subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                filename=excel_name
-            )
+        # Always attach the generated excel sheet
+        msg.add_attachment(excel_bytes, maintype="application",
+                           subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           filename=excel_name)
 
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-            try:
-                smtp.ehlo()
-                smtp.starttls()
-                smtp.ehlo()
-                
-                mail_username = os.getenv("MAIL_USERNAME")
-                mail_password = os.getenv("MAIL_PASSWORD")
-                
-                if not mail_username or not mail_password:
-                    return JSONResponse({
-                        "message": "Email credentials not configured. Please contact administrator.",
-                        "success": False
-                    }, status_code=500)
-                
-                smtp.login(mail_username, mail_password)
-                smtp.send_message(msg)
-            except smtplib.SMTPAuthenticationError as auth_err:
-                logger.error(f"SMTP Authentication failed: {auth_err}")
-                return JSONResponse({
-                    "message": "Email authentication failed. Please verify email credentials in settings.",
-                    "success": False
-                }, status_code=500)
-        
+        with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+            smtp.ehlo(); smtp.starttls()
+            smtp.login(os.getenv("MAIL_USERNAME"), os.getenv("MAIL_PASSWORD"))
+            smtp.send_message(msg)
         return JSONResponse({"message": "Email sent successfully", "success": True}, status_code=200)
     except Exception as e:
         logger.error(f"Send-email error: {e}")
@@ -1134,8 +922,6 @@ async def upload_items(
 @app.get("/api/get-items")
 async def get_items(
     search: str = Query(None),
-    page: int = Query(1),
-    limit: int = Query(50),
     emp_id: str = Depends(get_current_user)
 ):
     try:
@@ -1146,15 +932,11 @@ async def get_items(
                 {"item_name": {"$regex": search, "$options": "i"}}
             ]}
 
-        # Calculate pagination
-        skip = (page - 1) * limit
-        total = item_master_collection.count_documents(query)
-        
-        # Fetch from master — include sheet_name and qty now with pagination
+        # Fetch from master — include sheet_name and qty now
         items = list(item_master_collection.find(
             query,
             {"_id": 0, "item_code": 1, "item_name": 1, "sheet_name": 1, "qty": 1}
-        ).skip(skip).limit(limit))
+        ))
 
         # Get existing stock-count data for this user today
         today = datetime.now(timezone.utc).date().isoformat()
@@ -1176,17 +958,7 @@ async def get_items(
             item.setdefault("qty", "")
 
         return JSONResponse(
-            {
-                "message": "Items retrieved successfully", 
-                "success": True, 
-                "data": {
-                    "items": items,
-                    "page": page,
-                    "limit": limit,
-                    "total": total,
-                    "has_more": (page * limit) < total
-                }
-            },
+            {"message": "Items retrieved successfully", "success": True, "data": {"items": items}},
             status_code=200
         )
     except Exception as e:
@@ -1349,120 +1121,6 @@ async def export_stock_count_excel(emp_id: str = Depends(get_current_user)):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SEND STOCK COUNT EMAIL (from history/completed)
-# ─────────────────────────────────────────────────────────────────────────────
-
-@app.post("/api/send-stock-count-email")
-async def send_stock_count_email(
-    audit_id: str = Form(...),
-    to_email: str = Form(...),
-    emp_id: str = Depends(get_current_user)
-):
-    """
-    Send stock count report via email.
-    Similar to checklist email but for stock count only.
-    Called from History tab or after submission.
-    """
-    try:
-        from bson import ObjectId
-        
-        # Get user name
-        user = users.find_one({"email": emp_id})
-        user_name = user.get("name", "Unknown") if user else "Unknown"
-        
-        # Get stock count data by audit_id
-        audit_data = audit_data_collection.find_one({"user_id": emp_id, "_id": ObjectId(audit_id)})
-        if not audit_data:
-            return JSONResponse({"message": "Stock count not found", "success": False}, status_code=404)
-        
-        if not audit_data.get("stock_count_data"):
-            return JSONResponse({"message": "No stock count data found", "success": False}, status_code=404)
-        
-        # Build Excel
-        data = audit_data["stock_count_data"]
-        df = pd.DataFrame(data)
-        columns = ["sheet_name", "item_name", "item_code", "qty", "physical_amount", "remarks"]
-        available_cols = [c for c in columns if c in df.columns]
-        df = df[available_cols]
-        df.rename(columns={
-            "sheet_name": "Sheet Name",
-            "item_name": "Item Name",
-            "item_code": "Item Code",
-            "qty": "Expected Qty",
-            "physical_amount": "Physical Count",
-            "remarks": "Remarks"
-        }, inplace=True)
-        
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Stock Count')
-        excel_bytes = output.getvalue()
-        
-        # Use original uploaded filename if available
-        uploaded_filename = audit_data.get("uploaded_filename", "")
-        if uploaded_filename:
-            if not uploaded_filename.lower().endswith(('.xlsx', '.xls')):
-                excel_name = f"{uploaded_filename}_outcome.xlsx"
-            else:
-                excel_name = uploaded_filename.rsplit('.', 1)[0] + "_outcome.xlsx"
-        else:
-            target_date = audit_data.get("date", datetime.now(timezone.utc).date().isoformat())
-            excel_name = f"Stock_Count_{target_date}.xlsx"
-        
-        # Email content
-        target_date = audit_data.get("date", datetime.now(timezone.utc).date().isoformat())
-        subject = f"Stock Count Report – {target_date} – {user_name}"
-        body = f"Dear Manager,\n\nPlease find the Stock Count report attached.\n\nDate: {target_date}\nTotal Items: {len(data)}\n\nRegards,\n{user_name}\nAudit App"
-        
-        # Create email
-        msg = EmailMessage()
-        msg["Subject"] = subject
-        msg["From"] = os.getenv("MAIL_USERNAME")
-        msg["To"] = to_email
-        msg["Cc"] = emp_id
-        msg.set_content(body)
-        
-        # Attach Excel
-        msg.add_attachment(
-            excel_bytes,
-            maintype="application",
-            subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename=excel_name
-        )
-        
-        # Send
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-            try:
-                smtp.ehlo()
-                smtp.starttls()
-                smtp.ehlo()
-                
-                mail_username = os.getenv("MAIL_USERNAME")
-                mail_password = os.getenv("MAIL_PASSWORD")
-                
-                if not mail_username or not mail_password:
-                    return JSONResponse({
-                        "message": "Email credentials not configured. Please contact administrator.",
-                        "success": False
-                    }, status_code=500)
-                
-                smtp.login(mail_username, mail_password)
-                smtp.send_message(msg)
-            except smtplib.SMTPAuthenticationError as auth_err:
-                logger.error(f"SMTP Authentication failed: {auth_err}")
-                return JSONResponse({
-                    "message": "Email authentication failed. Please verify email credentials in settings.",
-                    "success": False
-                }, status_code=500)
-        
-        return JSONResponse({"message": "Email sent successfully", "success": True}, status_code=200)
-        
-    except Exception as e:
-        logger.error(f"Send stock count email error: {e}")
-        return JSONResponse({"message": f"Failed to send email: {str(e)}", "success": False}, status_code=500)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 #  ADMIN ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1481,15 +1139,11 @@ async def get_employees_stats(emp_id: str = Depends(get_current_user)):
     try:
         if not admins_collection.find_one({"email": emp_id}):
             return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
-        
-        # ULTRA-FAST: Just get email and name (no complex stats)
-        all_users = list(users.find({}, {"_id": 0, "email": 1, "name": 1}).limit(100))
-        
-        return JSONResponse({
-            "message": "Stats fetched", 
-            "success": True, 
-            "data": {"users": all_users, "total": len(all_users)}
-        }, status_code=200)
+        all_users = list(users.find({}, {"_id": 0, "email": 1, "name": 1, "created_at": 1}))
+        for u in all_users:
+            if "created_at" in u and hasattr(u["created_at"], "isoformat"):
+                u["created_at"] = u["created_at"].isoformat()
+        return JSONResponse({"message": "Stats fetched", "success": True, "data": {"users": all_users, "total": len(all_users)}}, status_code=200)
     except Exception as e:
         logger.error(f"Stats error: {e}")
         return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
@@ -1508,38 +1162,26 @@ async def admin_checklist_data(emp_id: str = Depends(get_current_user)):
         logger.error(f"Checklist error: {e}")
         return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
 
-def _serialize_mongo(obj):
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    if isinstance(obj, dict):
-        return {k: _serialize_mongo(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_serialize_mongo(v) for v in obj]
-    return obj
-
 @app.get("/api/admin/uploaded-history")
 async def uploaded_history(emp_id: str = Depends(get_current_user)):
     try:
         if not admins_collection.find_one({"email": emp_id}):
             return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
         
-        # Fetch all uploads, return total_items field (renamed from total_count for frontend compat)
-        history = list(upload_history_collection.find(
-            {},
-            {"_id": 0, "uploaded_by": 1, "uploaded_at": 1, "total_count": 1, "total_items": 1}
-        ).sort("uploaded_at", -1))
-        
-        # Normalize field name and convert datetimes
+        # Get history
+        history = list(upload_history_collection.find({}, {"_id": 0}).sort("uploaded_at", -1))
         for h in history:
             if "uploaded_at" in h and isinstance(h["uploaded_at"], datetime):
                 h["uploaded_at"] = h["uploaded_at"].isoformat()
-            # Support both field names; always expose as total_items
-            if "total_count" in h and "total_items" not in h:
-                h["total_items"] = h.pop("total_count")
-            elif "total_items" not in h:
-                h["total_items"] = 0
+                
+        # Also return current items group by sheet
+        current_items = list(item_master_collection.find({}, {"_id": 0}))
         
-        return JSONResponse({"message": "History fetched", "success": True, "data": {"history": history}}, status_code=200)
+        return JSONResponse({
+            "message": "Data fetched", 
+            "success": True, 
+            "data": {"history": history, "current_items": current_items}
+        }, status_code=200)
     except Exception as e:
         logger.error(f"Upload history error: {e}")
         return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
@@ -1564,60 +1206,56 @@ async def audit_dashboard(emp_id: str = Depends(get_current_user)):
         if not admins_collection.find_one({"email": emp_id}):
             return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
 
-        # Fetch ALL submitted audits with relevant fields
-        projection = {
-            "_id": 0, "user_id": 1, "date": 1, "submitted_at": 1,
-            "completion_status": 1, "warehouse_name": 1,
-            "sections.general_report.warehouse_name": 1,
-            "stock_count_data": 1
-        }
-        submitted = list(audit_data_collection.find({}, projection).sort("submitted_at", -1))
-        in_progress = list(temp_audit_data_collection.find({}, projection).sort("date", -1))
+        # Submitted audits
+        submitted = list(audit_data_collection.find({}, {"_id": 0, "user_id": 1, "date": 1,
+                                                          "completion_status": 1, "stock_count_data": 1,
+                                                          "submitted_at": 1, "sections": 1}))
+        # In-progress audits
+        in_progress = list(temp_audit_data_collection.find({}, {"_id": 0, "user_id": 1, "date": 1,
+                                                                  "completion_status": 1, "stock_count_data": 1, "sections": 1}))
 
-        # Collect all user emails for batch name lookup
-        all_user_emails = set()
-        for d in submitted + in_progress:
-            if d.get("user_id"):
-                all_user_emails.add(d["user_id"])
-        user_name_map = get_user_names_cached(all_user_emails)
-
-        total_checklist_sections = len(CHECKLIST_SECTIONS)
-
-        def build_row(d, status_label):
-            user_email = d.get("user_id", "")
-            comp_status = d.get("completion_status") or {}
-            completed = sum(1 for k in CHECKLIST_SECTIONS if comp_status.get(k, False))
-            pct = round((completed / total_checklist_sections * 100) if total_checklist_sections > 0 else 0)
-            # Resolve warehouse name
-            wh_name = (d.get("warehouse_name")
-                       or (d.get("sections") or {}).get("general_report", {}).get("warehouse_name")
-                       or "—")
-            sc_items = len(d.get("stock_count_data") or [])
+        def build_row(d, is_submitted):
+            cs = d.get("completion_status", {})
+            checklist_done = sum(1 for s in CHECKLIST_SECTIONS if cs.get(s, False))
+            checklist_total = len(CHECKLIST_SECTIONS)
+            
+            # Checklist status logic
+            if is_submitted:
+                checklist_status = "Submitted"
+            elif checklist_done == 0:
+                checklist_status = "Pending"
+            else:
+                checklist_status = "In Progress"
+            
+            # Stock count
+            sc_items = len(d.get("stock_count_data", []))
+            sc_submitted = cs.get("stock_count", False)
+            sc_status = "Submitted" if sc_submitted else "In Progress"
+            
+            wh_name = (d.get("sections") or {}).get("general_report", {}).get("warehouse_name", "—")
             submitted_at = d.get("submitted_at", "")
             if isinstance(submitted_at, datetime):
                 submitted_at = submitted_at.isoformat()
-            sc_status = "Submitted" if (status_label == "Submitted" and sc_items > 0) else \
-                        ("In Progress" if sc_items > 0 else "Pending")
             return {
-                "user_id": user_email,
-                "user_name": user_name_map.get(user_email, user_email),
+                "user_id": d.get("user_id", ""),
                 "date": d.get("date", ""),
                 "warehouse_name": wh_name,
-                "checklist_completed": completed,
-                "checklist_total": total_checklist_sections,
-                "checklist_pct": pct,
-                "checklist_status": status_label,
+                "checklist_completed": checklist_done,
+                "checklist_total": checklist_total,
+                "checklist_pct": round(checklist_done / checklist_total * 100) if checklist_total > 0 else 0,
+                "checklist_status": checklist_status,
                 "stock_count_items": sc_items,
+                "stock_count_submitted": sc_submitted,
                 "stock_count_status": sc_status,
-                "status": status_label,
-                "submitted_at": submitted_at
+                "submitted_at": submitted_at,
             }
 
-        rows = [build_row(d, "Submitted") for d in submitted]
-        rows += [build_row(d, "In Progress") for d in in_progress]
+        rows = [build_row(d, True) for d in submitted]
+        rows += [build_row(d, False) for d in in_progress]
+        rows.sort(key=lambda r: (r["date"], r["user_id"]), reverse=True)
 
         return JSONResponse({"message": "Dashboard data fetched", "success": True,
-                             "data": {"rows": rows}}, status_code=200)
+                             "data": {"rows": rows, "checklist_sections": CHECKLIST_SECTIONS}}, status_code=200)
     except Exception as e:
         logger.error(f"Audit dashboard error: {e}")
         return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
@@ -1685,16 +1323,16 @@ async def admin_analytics(start_date: str = None, end_date: str = None, emp_id: 
         from datetime import datetime, timedelta
         from collections import defaultdict
         
-        # Parse date range - default to last 7 days for performance
+        # Parse date range
         if not start_date:
-            start_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
         if not end_date:
             end_date = datetime.now().strftime("%Y-%m-%d")
         
-        # Fetch audits in date range with LIMIT for performance
+        # Fetch all audits in date range (both temp and submitted)
         query = {"date": {"$gte": start_date, "$lte": end_date}}
-        temp_audits = list(temp_audit_data_collection.find(query).limit(100))
-        submitted_audits = list(audit_data_collection.find(query).limit(100))
+        temp_audits = list(temp_audit_data_collection.find(query))
+        submitted_audits = list(audit_data_collection.find(query))
         all_audits = temp_audits + submitted_audits
         
         # Calculate metrics
@@ -1776,84 +1414,24 @@ async def admin_warehouse_status(date: str = None, emp_id: str = Depends(get_cur
         
         from datetime import datetime
         
+        # Use today's date if not provided
+        if not date:
+            date = datetime.now().strftime("%Y-%m-%d")
+        
         # Get all warehouses from warehouse master
         all_warehouses = list(warehouse_master_collection.find({}, {"_id": 0, "warehouse_name": 1, "warehouse_address": 1}))
         
         # Get audits for the specified date (both temp and submitted)
-        # If no date specified, get RECENT audits only (last 30 days) for performance
-        if date:
-            temp_audits = list(temp_audit_data_collection.find({"date": date}).limit(100))
-            submitted_audits = list(audit_data_collection.find({"date": date}).limit(100))
-        else:
-            # Get recent audits only - last 30 days
-            from datetime import timedelta
-            date_limit = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            temp_audits = list(temp_audit_data_collection.find({"date": {"$gte": date_limit}}).limit(100))
-            submitted_audits = list(audit_data_collection.find({"date": {"$gte": date_limit}}).limit(100))
+        temp_audits = list(temp_audit_data_collection.find({"date": date}))
+        submitted_audits = list(audit_data_collection.find({"date": date}))
+        all_audits = temp_audits + submitted_audits
         
         # Build warehouse status map
         warehouse_status_map = {}
         
-        # Process submitted audits FIRST (higher priority)
-        for audit in submitted_audits:
-            sections = audit.get("sections", {})
-            wh_name = sections.get("general_report", {}).get("warehouse_name") if sections else None
+        for audit in all_audits:
+            wh_name = audit.get("warehouse_name") or audit.get("general_report", {}).get("warehouse_name")
             if not wh_name:
-                wh_name = audit.get("warehouse_name")
-            if not wh_name:
-                continue
-            
-            # If warehouse not in map yet, initialize it
-            if wh_name not in warehouse_status_map:
-                warehouse_status_map[wh_name] = {
-                    "warehouse_name": wh_name,
-                    "warehouse_address": "",
-                    "status": "Completed",  # Submitted audit means completed
-                    "assigned_users": [],
-                    "progress_percentage": 100,
-                    "last_updated": None,
-                    "audit_id": None,
-                    "has_stock_count": False
-                }
-            else:
-                # If already exists but was "In Progress", upgrade to "Completed"
-                warehouse_status_map[wh_name]["status"] = "Completed"
-                warehouse_status_map[wh_name]["progress_percentage"] = 100
-            
-            # Update assigned users
-            user_id = audit.get("user_id")
-            if user_id and user_id not in warehouse_status_map[wh_name]["assigned_users"]:
-                warehouse_status_map[wh_name]["assigned_users"].append(user_id)
-            
-            # Check for stock count
-            if audit.get("stock_count_data") and len(audit.get("stock_count_data", [])) > 0:
-                warehouse_status_map[wh_name]["has_stock_count"] = True
-            
-            warehouse_status_map[wh_name]["audit_id"] = str(audit.get("_id", ""))
-            
-            # Update last_updated - convert datetime to string
-            updated_at = audit.get("submitted_at") or audit.get("date")
-            if updated_at:
-                # Convert datetime to string if needed
-                if isinstance(updated_at, datetime):
-                    updated_at = updated_at.strftime("%Y-%m-%d %H:%M:%S")
-                warehouse_status_map[wh_name]["last_updated"] = updated_at
-        
-        # Process temp audits SECOND (lower priority - only if not already completed)
-        for audit in temp_audits:
-            sections = audit.get("sections", {})
-            wh_name = sections.get("general_report", {}).get("warehouse_name") if sections else None
-            if not wh_name:
-                wh_name = audit.get("warehouse_name")
-            if not wh_name:
-                continue
-            
-            # If warehouse already marked as "Completed", skip updating it
-            if wh_name in warehouse_status_map and warehouse_status_map[wh_name]["status"] == "Completed":
-                # Just add user if not already added
-                user_id = audit.get("user_id")
-                if user_id and user_id not in warehouse_status_map[wh_name]["assigned_users"]:
-                    warehouse_status_map[wh_name]["assigned_users"].append(user_id)
                 continue
             
             # If warehouse not in map yet, initialize it
@@ -1865,11 +1443,10 @@ async def admin_warehouse_status(date: str = None, emp_id: str = Depends(get_cur
                     "assigned_users": [],
                     "progress_percentage": 0,
                     "last_updated": None,
-                    "audit_id": None,
-                    "has_stock_count": False
+                    "audit_id": None
                 }
             
-            # Update assigned users
+            # Update status based on audit
             user_id = audit.get("user_id")
             if user_id and user_id not in warehouse_status_map[wh_name]["assigned_users"]:
                 warehouse_status_map[wh_name]["assigned_users"].append(user_id)
@@ -1881,91 +1458,21 @@ async def admin_warehouse_status(date: str = None, emp_id: str = Depends(get_cur
                 total = len(comp_status)
                 progress = round((completed / total * 100) if total > 0 else 0)
                 
-                # Update progress
+                # Update if this audit has better progress
                 if progress > warehouse_status_map[wh_name]["progress_percentage"]:
                     warehouse_status_map[wh_name]["progress_percentage"] = progress
                     warehouse_status_map[wh_name]["audit_id"] = str(audit.get("_id", ""))
                 
-                # Set status to In Progress only if at least one section is completed
-                if completed > 0:
-                    warehouse_status_map[wh_name]["status"] = "In Progress"
+                # Determine status
+                if audit.get("submitted_at"):
+                    warehouse_status_map[wh_name]["status"] = "Completed"
+                elif completed > 0:
+                    if warehouse_status_map[wh_name]["status"] != "Completed":
+                        warehouse_status_map[wh_name]["status"] = "In Progress"
             
-            # Check for stock count
-            if audit.get("stock_count_data") and len(audit.get("stock_count_data", [])) > 0:
-                warehouse_status_map[wh_name]["has_stock_count"] = True
-            
-            warehouse_status_map[wh_name]["audit_id"] = str(audit.get("_id", ""))
-            
-            # Update last_updated - convert datetime to string
+            # Update last_updated
             updated_at = audit.get("submitted_at") or audit.get("date")
             if updated_at:
-                # Convert datetime to string if needed
-                if isinstance(updated_at, datetime):
-                    updated_at = updated_at.strftime("%Y-%m-%d %H:%M:%S")
-                if not warehouse_status_map[wh_name]["last_updated"] or updated_at > warehouse_status_map[wh_name]["last_updated"]:
-                    warehouse_status_map[wh_name]["last_updated"] = updated_at
-        
-        # Process temp audits SECOND (lower priority - only if not already completed)
-        for audit in temp_audits:
-            sections = audit.get("sections", {})
-            wh_name = sections.get("general_report", {}).get("warehouse_name") if sections else None
-            if not wh_name:
-                wh_name = audit.get("warehouse_name")
-            if not wh_name:
-                continue
-            
-            # If warehouse already marked as "Completed", skip updating it
-            if wh_name in warehouse_status_map and warehouse_status_map[wh_name]["status"] == "Completed":
-                # Just add user if not already added
-                user_id = audit.get("user_id")
-                if user_id and user_id not in warehouse_status_map[wh_name]["assigned_users"]:
-                    warehouse_status_map[wh_name]["assigned_users"].append(user_id)
-                continue
-            
-            # If warehouse not in map yet, initialize it
-            if wh_name not in warehouse_status_map:
-                warehouse_status_map[wh_name] = {
-                    "warehouse_name": wh_name,
-                    "warehouse_address": "",
-                    "status": "Not Started",
-                    "assigned_users": [],
-                    "progress_percentage": 0,
-                    "last_updated": None,
-                    "audit_id": None,
-                    "has_stock_count": False
-                }
-            
-            # Update assigned users
-            user_id = audit.get("user_id")
-            if user_id and user_id not in warehouse_status_map[wh_name]["assigned_users"]:
-                warehouse_status_map[wh_name]["assigned_users"].append(user_id)
-            
-            # Calculate progress
-            comp_status = audit.get("completion_status", {})
-            if comp_status:
-                completed = sum(1 for v in comp_status.values() if v)
-                total = len(comp_status)
-                progress = round((completed / total * 100) if total > 0 else 0)
-                
-                # Update progress
-                if progress > warehouse_status_map[wh_name]["progress_percentage"]:
-                    warehouse_status_map[wh_name]["progress_percentage"] = progress
-                    warehouse_status_map[wh_name]["audit_id"] = str(audit.get("_id", ""))
-                
-                # Set status to In Progress only if at least one section is completed
-                if completed > 0:
-                    warehouse_status_map[wh_name]["status"] = "In Progress"
-            
-            # Check for stock count
-            if audit.get("stock_count_data") and len(audit.get("stock_count_data", [])) > 0:
-                warehouse_status_map[wh_name]["has_stock_count"] = True
-            
-            # Update last_updated - convert datetime to string
-            updated_at = audit.get("date")
-            if updated_at:
-                # Convert datetime to string if needed
-                if isinstance(updated_at, datetime):
-                    updated_at = updated_at.strftime("%Y-%m-%d %H:%M:%S")
                 if not warehouse_status_map[wh_name]["last_updated"] or updated_at > warehouse_status_map[wh_name]["last_updated"]:
                     warehouse_status_map[wh_name]["last_updated"] = updated_at
         
@@ -1980,8 +1487,7 @@ async def admin_warehouse_status(date: str = None, emp_id: str = Depends(get_cur
                     "assigned_users": [],
                     "progress_percentage": 0,
                     "last_updated": None,
-                    "audit_id": None,
-                    "has_stock_count": False
+                    "audit_id": None
                 }
             else:
                 # Update address from master
@@ -2004,408 +1510,6 @@ async def admin_warehouse_status(date: str = None, emp_id: str = Depends(get_cur
         }, status_code=200)
     except Exception as e:
         logger.error(f"Warehouse status error: {e}")
-        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  STOCK COUNT RECONCILIATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-@app.get("/api/admin/audit-detail/{user_id}/{date}")
-async def admin_audit_detail(user_id: str, date: str, emp_id: str = Depends(get_current_user)):
-    """Get full audit detail for dashboard view button."""
-    try:
-        if not admins_collection.find_one({"email": emp_id}):
-            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
-        # Search submitted first, then in-progress
-        audit = audit_data_collection.find_one({"user_id": user_id, "date": date})
-        if not audit:
-            audit = temp_audit_data_collection.find_one({"user_id": user_id, "date": date})
-        if not audit:
-            return JSONResponse({"message": "Audit not found", "success": False}, status_code=404)
-        audit["_id"] = str(audit["_id"])
-        if "submitted_at" in audit and isinstance(audit["submitted_at"], datetime):
-            audit["submitted_at"] = audit["submitted_at"].isoformat()
-        # Resolve warehouse name
-        wh_name = (audit.get("warehouse_name")
-                   or (audit.get("sections") or {}).get("general_report", {}).get("warehouse_name")
-                   or "—")
-        audit["warehouse_name"] = wh_name
-        # Add user display name
-        user_rec = users.find_one({"email": user_id}, {"_id": 0, "name": 1})
-        audit["user_name"] = user_rec.get("name", user_id) if user_rec else user_id
-        return JSONResponse({"message": "Audit detail fetched", "success": True, "data": audit}, status_code=200)
-    except Exception as e:
-        logger.error(f"Audit detail error: {e}")
-        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
-
-
-@app.get("/api/admin/export-audit/{user_id}/{date}")
-async def admin_export_audit(user_id: str, date: str, type: str = "checklist", emp_id: str = Depends(get_current_user)):
-    """Export audit Excel from admin panel."""
-    try:
-        if not admins_collection.find_one({"email": emp_id}):
-            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
-        # Find audit in submitted, then temp
-        audit_data = audit_data_collection.find_one({"user_id": user_id, "date": date})
-        if not audit_data:
-            audit_data = temp_audit_data_collection.find_one({"user_id": user_id, "date": date})
-        if not audit_data:
-            return JSONResponse({"message": "Audit not found", "success": False}, status_code=404)
-        if type == "stockcount":
-            excel_bytes = generate_stock_count_excel_bytes(audit_data)
-            filename = f"StockCount_{user_id}_{date}.xlsx"
-        else:
-            excel_bytes = await generate_checklist_excel_bytes(user_id, audit_data)
-            filename = f"Checklist_{user_id}_{date}.xlsx"
-        return StreamingResponse(
-            io.BytesIO(excel_bytes),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"}
-        )
-    except Exception as e:
-        logger.error(f"Admin export audit error: {e}")
-        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
-
-
-@app.get("/api/admin/stock-reconciliation")
-async def admin_stock_reconciliation(
-    from_date: str = None,
-    to_date: str = None,
-    date: str = None,
-    warehouse: str = None,
-    emp_id: str = Depends(get_current_user)
-):
-    """Get reconciliation report showing stock count data filled by users."""
-    try:
-        if not admins_collection.find_one({"email": emp_id}):
-            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
-
-        # Support both single date (legacy) and date range
-        effective_from = from_date or date
-        effective_to = to_date or date
-
-        if not effective_from or not effective_to:
-            return JSONResponse({
-                "message": "Date range is required",
-                "success": True,
-                "data": {
-                    "reconciliation": [],
-                    "pagination": {"current_page": 1, "total_pages": 1, "total_items": 0, "items_per_page": 10},
-                    "summary": {"total_items": 0, "matched": 0, "excess": 0, "shortage": 0, "match_rate": 0}
-                }
-            }, status_code=200)
-
-        # Build date range query
-        query = {"date": {"$gte": effective_from, "$lte": effective_to}}
-
-        # Get audits in date range
-        temp_audits = list(temp_audit_data_collection.find(query))
-        submitted_audits = list(audit_data_collection.find(query))
-        all_audits = submitted_audits + temp_audits
-        
-        reconciliation_data = []
-        user_ids = set()
-        
-        for audit in all_audits:
-            stock_count_data = audit.get("stock_count_data", [])
-            if not stock_count_data:
-                continue
-            
-            user_id = audit.get("user_id", "Unknown")
-            user_ids.add(user_id)
-            audit_status = "Submitted" if audit.get("submitted_at") else "In Progress"
-            
-            # Process each stock count item
-            for item in stock_count_data:
-                item_code = item.get("item_code", "")
-                item_name = item.get("item_name", "")
-                sheet_name = item.get("sheet_name", "")
-                remarks = item.get("remarks", "")
-                
-                # Get physical quantity from what user filled
-                physical_qty_raw = item.get("physical_amount", item.get("quantity", item.get("qty", 0)))
-                try:
-                    physical_qty = float(physical_qty_raw) if physical_qty_raw != "" else 0
-                except Exception:
-                    physical_qty = 0
-                
-                # Get system quantity from item master (if exists)
-                system_qty = 0
-                master_item = item_master_collection.find_one({"item_code": item_code, "sheet_name": sheet_name})
-                if master_item:
-                    system_qty_raw = master_item.get("qty", master_item.get("quantity", 0))
-                    try:
-                        system_qty = float(system_qty_raw) if system_qty_raw != "" else 0
-                    except Exception:
-                        system_qty = 0
-                
-                # Calculate variance
-                variance = physical_qty - system_qty
-                variance_pct = round((variance / system_qty * 100) if system_qty > 0 else 0, 2)
-                
-                # Categorize variance
-                if variance == 0:
-                    variance_status = "Match"
-                elif variance > 0:
-                    variance_status = "Excess"
-                else:
-                    variance_status = "Shortage"
-                
-                reconciliation_data.append({
-                    "user_id": user_id,
-                    "item_code": item_code,
-                    "item_name": item_name,
-                    "sheet_name": sheet_name,
-                    "remarks": remarks,
-                    "system_quantity": system_qty,
-                    "physical_quantity": physical_qty,
-                    "variance": variance,
-                    "variance_percentage": variance_pct,
-                    "variance_status": variance_status,
-                    "audit_status": audit_status,
-                    "date": date
-                })
-        
-        # Use cached user name lookup for better performance
-        user_name_map = get_user_names_cached(user_ids)
-        
-        # Add user names to records
-        for record in reconciliation_data:
-            record["auditor_name"] = user_name_map.get(record["user_id"], record["user_id"])
-        
-        # Apply warehouse filter if provided
-        if warehouse:
-            reconciliation_data = [
-                r for r in reconciliation_data
-                if warehouse.lower() in r.get("sheet_name", "").lower()
-                or warehouse.lower() in r.get("remarks", "").lower()
-            ]
-
-        # Summary statistics (all data, before pagination)
-        total_items = len(reconciliation_data)
-        matched = sum(1 for r in reconciliation_data if r["variance_status"] == "Match")
-        excess = sum(1 for r in reconciliation_data if r["variance_status"] == "Excess")
-        shortage = sum(1 for r in reconciliation_data if r["variance_status"] == "Shortage")
-
-        return JSONResponse({
-            "message": "Reconciliation data fetched",
-            "success": True,
-            "data": {
-                "reconciliation": reconciliation_data,
-                "summary": {
-                    "total_items": total_items,
-                    "matched": matched,
-                    "excess": excess,
-                    "shortage": shortage,
-                    "match_rate": round((matched / total_items * 100) if total_items > 0 else 0, 2)
-                },
-                "from_date": effective_from,
-                "to_date": effective_to,
-                "warehouse_filter": warehouse or "All"
-            }
-        }, status_code=200)
-    except Exception as e:
-        logger.error(f"Stock reconciliation error: {e}")
-        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  TASK ASSIGNMENT
-# ─────────────────────────────────────────────────────────────────────────────
-
-class TaskAssignment(BaseModel):
-    warehouse_name: str
-    assigned_to: List[str]  # List of user email IDs
-    task_type: str  # "checklist" or "stock_count"
-    due_date: str  # YYYY-MM-DD format
-    notes: Optional[str] = ""
-
-@app.post("/api/admin/assign-task")
-async def assign_task(task: TaskAssignment, emp_id: str = Depends(get_current_user)):
-    """Assign audit tasks to team members for specific warehouses."""
-    try:
-        if not admins_collection.find_one({"email": emp_id}):
-            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
-        
-        # Create task assignment document
-        task_doc = {
-            "warehouse_name": task.warehouse_name,
-            "assigned_to": task.assigned_to,
-            "assigned_by": emp_id,
-            "task_type": task.task_type,
-            "due_date": task.due_date,
-            "notes": task.notes,
-            "status": "Assigned",
-            "created_at": datetime.now(timezone.utc),
-            "completed_at": None
-        }
-        
-        # Check if task already exists for this warehouse and date
-        existing = task_assignments_collection.find_one({
-            "warehouse_name": task.warehouse_name,
-            "due_date": task.due_date,
-            "task_type": task.task_type
-        })
-        
-        if existing:
-            # Update existing task
-            task_assignments_collection.update_one(
-                {"_id": existing["_id"]},
-                {"$set": {
-                    "assigned_to": task.assigned_to,
-                    "assigned_by": emp_id,
-                    "notes": task.notes,
-                    "updated_at": datetime.now(timezone.utc)
-                }}
-            )
-            message = "Task assignment updated successfully"
-        else:
-            # Insert new task
-            task_assignments_collection.insert_one(task_doc)
-            message = "Task assigned successfully"
-        
-        # Send email notification to assigned users
-        try:
-            task_type_label = "Checklist Audit" if task.task_type == "checklist" else "Stock Count"
-            email_subject = f"New Task Assignment: {task.warehouse_name}"
-            email_body = f"""
-            <html>
-            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-                <h2 style="color: #4338ca;">New Task Assigned to You</h2>
-                <p>You have been assigned a new audit task by {emp_id}.</p>
-                
-                <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                    <h3 style="margin-top: 0;">Task Details:</h3>
-                    <p><strong>Warehouse:</strong> {task.warehouse_name}</p>
-                    <p><strong>Task Type:</strong> {task_type_label}</p>
-                    <p><strong>Due Date:</strong> {task.due_date}</p>
-                    {f'<p><strong>Notes:</strong> {task.notes}</p>' if task.notes else ''}
-                </div>
-                
-                <p>Please complete this task by the due date.</p>
-                <p style="color: #666; font-size: 12px; margin-top: 30px;">This is an automated message from the Audit Application.</p>
-            </body>
-            </html>
-            """
-            
-            # Use helper function to send email to all assigned users
-            success, message = send_email_notification(
-                to_emails=task.assigned_to,
-                subject=email_subject,
-                body=email_body,
-                attachments=None
-            )
-            
-            if success:
-                logger.info(f"Task assignment emails sent to {len(task.assigned_to)} user(s)")
-            else:
-                logger.error(f"Failed to send task assignment emails: {message}")
-                
-        except Exception as email_error:
-            logger.error(f"Failed to send task assignment emails: {email_error}")
-            # Don't fail the entire request if email fails
-        
-        # Convert datetime to string for JSON response
-        task_response = {
-            "warehouse_name": task.warehouse_name,
-            "assigned_to": task.assigned_to,
-            "assigned_by": emp_id,
-            "task_type": task.task_type,
-            "due_date": task.due_date,
-            "notes": task.notes,
-            "status": "Assigned"
-        }
-        
-        return JSONResponse({
-            "message": message,
-            "success": True,
-            "data": {"task": task_response}
-        }, status_code=200)
-    except Exception as e:
-        logger.error(f"Task assignment error: {e}")
-        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
-
-@app.get("/api/admin/task-assignments")
-async def get_task_assignments(date: str = None, warehouse: str = None, emp_id: str = Depends(get_current_user)):
-    """Get all task assignments with optional filters."""
-    try:
-        if not admins_collection.find_one({"email": emp_id}):
-            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
-        
-        # Build query
-        query = {}
-        if date:
-            query["due_date"] = date
-        if warehouse:
-            query["warehouse_name"] = warehouse
-        
-        # Get all task assignments
-        tasks = list(task_assignments_collection.find(query).sort("due_date", -1))
-        
-        # Convert ObjectId to string
-        for task in tasks:
-            task["_id"] = str(task["_id"])
-            if "created_at" in task and isinstance(task["created_at"], datetime):
-                task["created_at"] = task["created_at"].isoformat()
-            if "completed_at" in task and isinstance(task["completed_at"], datetime):
-                task["completed_at"] = task["completed_at"].isoformat()
-        
-        return JSONResponse({
-            "message": "Task assignments fetched",
-            "success": True,
-            "data": {"tasks": tasks}
-        }, status_code=200)
-    except Exception as e:
-        logger.error(f"Get task assignments error: {e}")
-        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
-
-@app.get("/api/user/my-tasks")
-async def get_my_tasks(emp_id: str = Depends(get_current_user)):
-    """Get tasks assigned to the current user."""
-    try:
-        # Get all tasks assigned to this user
-        tasks = list(task_assignments_collection.find({
-            "assigned_to": emp_id,
-            "status": {"$ne": "Completed"}
-        }).sort("due_date", 1))
-        
-        # Convert ObjectId to string
-        for task in tasks:
-            task["_id"] = str(task["_id"])
-            if "created_at" in task and isinstance(task["created_at"], datetime):
-                task["created_at"] = task["created_at"].isoformat()
-        
-        return JSONResponse({
-            "message": "Your tasks fetched",
-            "success": True,
-            "data": {"tasks": tasks}
-        }, status_code=200)
-    except Exception as e:
-        logger.error(f"Get my tasks error: {e}")
-        return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
-
-@app.delete("/api/admin/task-assignments/{task_id}")
-async def delete_task_assignment(task_id: str, emp_id: str = Depends(get_current_user)):
-    """Delete a task assignment."""
-    try:
-        if not admins_collection.find_one({"email": emp_id}):
-            return JSONResponse({"message": "Unauthorized", "success": False}, status_code=403)
-        
-        from bson import ObjectId
-        
-        # Delete the task
-        result = task_assignments_collection.delete_one({"_id": ObjectId(task_id)})
-        
-        if result.deleted_count == 0:
-            return JSONResponse({"message": "Task not found", "success": False}, status_code=404)
-        
-        return JSONResponse({
-            "message": "Task deleted successfully",
-            "success": True
-        }, status_code=200)
-    except Exception as e:
-        logger.error(f"Delete task error: {e}")
         return JSONResponse({"message": f"Server error: {str(e)}", "success": False}, status_code=500)
 
 

@@ -366,10 +366,8 @@ if (document.getElementById('section-list')) {
             // Log server completion status
             console.log('Server completion_status:', sectionsData.data.completion_status);
 
-            // Load local completion status as fallback
-            const localCompletionStatus = JSON.parse(localStorage.getItem('completionStatus')) || {};
             const serverStatus = sectionsData.data.completion_status || {};
-            completionStatus = { ...localCompletionStatus, ...serverStatus };
+            completionStatus = { ...serverStatus };
 
             // <-- UPDATED: include 'stock_reconciliation' right after general_report -->
             sections = [
