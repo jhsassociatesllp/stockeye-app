@@ -854,7 +854,6 @@ async def export_audit(
         logger.error(f"export-excel error: {e}")
         return JSONResponse({"message": f"Server error: {e}", "success": False}, status_code=500)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 #  SEND EMAIL
 # ─────────────────────────────────────────────────────────────────────────────
