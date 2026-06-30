@@ -52,6 +52,8 @@ jobs:
                 -e APP_ENV=$TAG \
                 -e JWT_SECRET='${{ secrets.JWT_SECRET }}' \
                 -e JWT_ALGORITHM='${{ secrets.JWT_ALGORITHM }}' \
+                -e MAIL_USERNAME='${{ secrets.MAIL_USERNAME }}'
+                -e MAIL_PASSWORD='${{ secrets.MAIL_PASSWORD }}'
                 -e MONGO_CONNECTION_STRING='${{ secrets.MONGO_CONNECTION_STRING }}' \
                 $IMAGE
 
