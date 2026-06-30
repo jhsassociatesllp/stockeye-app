@@ -17,6 +17,9 @@ import re
 import smtplib
 import base64
 import logging
+import asyncio
+import traceback
+import time
 from collections import defaultdict
 from typing import Dict, List, Optional
 from datetime import datetime, timezone, timedelta
@@ -203,6 +206,31 @@ def merge_stock_count_data(existing_items: list, incoming_items: list) -> list:
     return merged
 
 
+def send_smtp_message_sync(msg, mail_username, mail_password):
+    last_err = None
+    for attempt in range(1, 4):
+        try:
+            logger.info(f"SMTP send attempt {attempt}/3...")
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as smtp:
+                smtp.ehlo()
+                smtp.starttls()
+                smtp.ehlo()
+                smtp.login(mail_username, mail_password)
+                smtp.send_message(msg)
+            logger.info("SMTP send successful!")
+            return True
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"SMTP auth failed: {e}")
+            raise
+        except Exception as e:
+            last_err = e
+            logger.warning(f"SMTP attempt {attempt} failed: {e}. Traceback:\n{traceback.format_exc()}")
+            if attempt < 3:
+                time.sleep(1.5)
+    if last_err:
+        raise last_err
+
+
 def send_email_notification(
     to_emails: list,
     subject: str,
@@ -235,17 +263,10 @@ def send_email_notification(
                     filename=filename,
                 )
 
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.ehlo()
-            smtp.login(mail_username, mail_password)
-            smtp.send_message(msg)
-
+        send_smtp_message_sync(msg, mail_username, mail_password)
         return True, "Email sent successfully"
 
     except smtplib.SMTPAuthenticationError as e:
-        logger.error(f"SMTP auth failed: {e}")
         return False, f"Email authentication failed: {e}"
     except Exception as e:
         logger.error(f"Email send error: {e}")
@@ -919,17 +940,13 @@ async def send_email(
                     status_code=500,
                 )
 
-            with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-                smtp.ehlo(); smtp.starttls(); smtp.ehlo()
-                try:
-                    smtp.login(mail_username, mail_password)
-                    smtp.send_message(msg)
-                except smtplib.SMTPAuthenticationError as e:
-                    logger.error(f"SMTP auth failed: {e}")
-                    return JSONResponse(
-                        {"message": "Email authentication failed.", "success": False},
-                        status_code=500,
-                    )
+            try:
+                await asyncio.to_thread(send_smtp_message_sync, msg, mail_username, mail_password)
+            except smtplib.SMTPAuthenticationError as e:
+                return JSONResponse(
+                    {"message": "Email authentication failed.", "success": False},
+                    status_code=500,
+                )
 
             return JSONResponse({
                 "message": f"Email sent successfully with {len(all_uploads)} attachment(s)",
@@ -1045,17 +1062,13 @@ async def send_email(
                 status_code=500,
             )
 
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-            smtp.ehlo(); smtp.starttls(); smtp.ehlo()
-            try:
-                smtp.login(mail_username, mail_password)
-                smtp.send_message(msg)
-            except smtplib.SMTPAuthenticationError as e:
-                logger.error(f"SMTP auth failed: {e}")
-                return JSONResponse(
-                    {"message": "Email authentication failed.", "success": False},
-                    status_code=500,
-                )
+        try:
+            await asyncio.to_thread(send_smtp_message_sync, msg, mail_username, mail_password)
+        except smtplib.SMTPAuthenticationError as e:
+            return JSONResponse(
+                {"message": "Email authentication failed.", "success": False},
+                status_code=500,
+            )
 
         return JSONResponse({"message": "Email sent successfully", "success": True})
     except Exception as e:
@@ -1542,16 +1555,13 @@ async def send_stock_count_email(
                 status_code=500,
             )
 
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-            smtp.ehlo(); smtp.starttls(); smtp.ehlo()
-            try:
-                smtp.login(mail_username, mail_password)
-                smtp.send_message(msg)
-            except smtplib.SMTPAuthenticationError as e:
-                return JSONResponse(
-                    {"message": "Email authentication failed.", "success": False},
-                    status_code=500,
-                )
+        try:
+            await asyncio.to_thread(send_smtp_message_sync, msg, mail_username, mail_password)
+        except smtplib.SMTPAuthenticationError as e:
+            return JSONResponse(
+                {"message": "Email authentication failed.", "success": False},
+                status_code=500,
+            )
 
         return JSONResponse({"message": "Email sent successfully", "success": True})
     except Exception as e:

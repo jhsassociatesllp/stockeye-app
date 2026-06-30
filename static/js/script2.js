@@ -892,17 +892,18 @@ if (document.getElementById('section-list')) {
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
                 `;
                 // Populate data
-                if (sectionData.questions && sectionData.questions.length === questions.length) {
+                if (sectionData.questions) {
                     sectionData.questions.forEach((qd, i) => {
                         const radio = document.querySelector(`input[name="q${i}"][value="${qd.answer}"]`);
                         if (radio) radio.checked = true;
-                        document.getElementById(`remarks${i}`).value = qd.remarks || '';
+                        const remarksInput = document.getElementById(`remarks${i}`);
+                        if (remarksInput) remarksInput.value = qd.remarks || '';
                     });
                 }
             } else if (section === 'observations_on_warehouse_operations') {
                 const questions = [
                     "Whether custody of Navtal brand lock and key of the warehouse/godown is with WSP/WH Owner/others? (Pls specify) Whether additional key of Warehouse available at WSP Head office/WSP regional office and details are updated in Key distribution register?",
-                    "Does the WSP use Navtal brand lock seals at every lock of all shutters which are used for transaction of goods? Whether seal details are captured in register.",
+                    "Does the WSP use lock seals at every lock of all shutters which are used for transaction of goods? Whether seal details are captured in register.",
                     "Does the warehouse change Navtal brand locks every six months in June and December? Verify the serial number of lock and key, date when it was last changed.",
                     "Specify the number of WH staffs deployed at the warehouse/warehouse complex.",
                     "Indicate number of security guards deployed shift wise.",
@@ -927,7 +928,8 @@ if (document.getElementById('section-list')) {
                     "Is a written consent of client and approval from MCXCCL sought in case weighment of the commodity is done on any other weighbridge when MCXCCL approved weighbridges are non-functional?",
                     "Whether the list of weighbridge (accredited weighbridge for cotton bales) along with calibration certificate displayed in the warehouse?",
                     "Whether periodic stock audit done by Independent team other than of the same warehouse deployed staffs? (verify with visitor register at the warehouse)",
-                    "Whether the storage structure (warehouse) is far away (150 meter) from the source of fire-hazard, such as timber stores, petrol/CNG/PNG pumping stations/LPG bottling plant?"
+                    "Whether the storage structure (warehouse) is far away (150 meter) from the source of fire-hazard, such as timber stores, petrol/CNG/PNG pumping stations/LPG bottling plant?",
+                    "Availability of standard weights with calibration certificate at warehouse."
                 ];
                 questions.forEach((q, i) => {
                     form.innerHTML += `
@@ -945,11 +947,12 @@ if (document.getElementById('section-list')) {
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
                 `;
                 // Populate data
-                if (sectionData.questions && sectionData.questions.length === questions.length) {
+                if (sectionData.questions) {
                     sectionData.questions.forEach((qd, i) => {
                         const radio = document.querySelector(`input[name="q${i}"][value="${qd.answer}"]`);
                         if (radio) radio.checked = true;
-                        document.getElementById(`remarks${i}`).value = qd.remarks || '';
+                        const remarksInput = document.getElementById(`remarks${i}`);
+                        if (remarksInput) remarksInput.value = qd.remarks || '';
                     });
                 }
             } else if (section === 'observations_on_warehouse_record_keeping') {
@@ -986,11 +989,12 @@ if (document.getElementById('section-list')) {
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
                 `;
                 // Populate data
-                if (sectionData.questions && sectionData.questions.length === questions.length) {
+                if (sectionData.questions) {
                     sectionData.questions.forEach((qd, i) => {
                         const radio = document.querySelector(`input[name="q${i}"][value="${qd.answer}"]`);
                         if (radio) radio.checked = true;
-                        document.getElementById(`remarks${i}`).value = qd.remarks || '';
+                        const remarksInput = document.getElementById(`remarks${i}`);
+                        if (remarksInput) remarksInput.value = qd.remarks || '';
                     });
                 }
             } else if (section === 'observations_on_wh_infrastructure') {
@@ -1032,11 +1036,12 @@ if (document.getElementById('section-list')) {
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
                 `;
                 // Populate data
-                if (sectionData.questions && sectionData.questions.length === questions.length) {
+                if (sectionData.questions) {
                     sectionData.questions.forEach((qd, i) => {
                         const radio = document.querySelector(`input[name="q${i}"][value="${qd.answer}"]`);
                         if (radio) radio.checked = true;
-                        document.getElementById(`remarks${i}`).value = qd.remarks || '';
+                        const remarksInput = document.getElementById(`remarks${i}`);
+                        if (remarksInput) remarksInput.value = qd.remarks || '';
                     });
                 }
             } else if (section === 'observations_on_quality_operation') {
@@ -1069,11 +1074,12 @@ if (document.getElementById('section-list')) {
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
                 `;
                 // Populate data
-                if (sectionData.questions && sectionData.questions.length === questions.length) {
+                if (sectionData.questions) {
                     sectionData.questions.forEach((qd, i) => {
                         const radio = document.querySelector(`input[name="q${i}"][value="${qd.answer}"]`);
                         if (radio) radio.checked = true;
-                        document.getElementById(`remarks${i}`).value = qd.remarks || '';
+                        const remarksInput = document.getElementById(`remarks${i}`);
+                        if (remarksInput) remarksInput.value = qd.remarks || '';
                     });
                 }
             } else if (section === 'checklist_wrt_exchange_circular_mentha_oil') {
@@ -1108,11 +1114,12 @@ if (document.getElementById('section-list')) {
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
                 `;
                 // Populate data
-                if (sectionData.questions && sectionData.questions.length === questions.length) {
+                if (sectionData.questions) {
                     sectionData.questions.forEach((qd, i) => {
                         const radio = document.querySelector(`input[name="q${i}"][value="${qd.answer}"]`);
                         if (radio) radio.checked = true;
-                        document.getElementById(`remarks${i}`).value = qd.remarks || '';
+                        const remarksInput = document.getElementById(`remarks${i}`);
+                        if (remarksInput) remarksInput.value = qd.remarks || '';
                     });
                 }
             } else if (section === 'checklist_wrt_exchange_circular_metal') {
@@ -1148,11 +1155,12 @@ if (document.getElementById('section-list')) {
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
                 `;
                 // Populate data
-                if (sectionData.questions && sectionData.questions.length === questions.length) {
+                if (sectionData.questions) {
                     sectionData.questions.forEach((qd, i) => {
                         const radio = document.querySelector(`input[name="q${i}"][value="${qd.answer}"]`);
                         if (radio) radio.checked = true;
-                        document.getElementById(`remarks${i}`).value = qd.remarks || '';
+                        const remarksInput = document.getElementById(`remarks${i}`);
+                        if (remarksInput) remarksInput.value = qd.remarks || '';
                     });
                 }
             } else if (section === 'checklist_wrt_exchange_circular_cotton_bales') {
@@ -1182,11 +1190,12 @@ if (document.getElementById('section-list')) {
                     <button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>
                 `;
                 // Populate data
-                if (sectionData.questions && sectionData.questions.length === questions.length) {
+                if (sectionData.questions) {
                     sectionData.questions.forEach((qd, i) => {
                         const radio = document.querySelector(`input[name="q${i}"][value="${qd.answer}"]`);
                         if (radio) radio.checked = true;
-                        document.getElementById(`remarks${i}`).value = qd.remarks || '';
+                        const remarksInput = document.getElementById(`remarks${i}`);
+                        if (remarksInput) remarksInput.value = qd.remarks || '';
                     });
                 }
             }

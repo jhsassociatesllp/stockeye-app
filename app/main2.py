@@ -22,6 +22,9 @@ from docx.shared import Pt
 import base64, re
 from docx.shared import Inches
 import smtplib
+import asyncio
+import traceback
+import time
 from email.message import EmailMessage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -715,9 +718,30 @@ async def export_excel(emp_id: str = Depends(get_current_user)):
 #  SEND EMAIL
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  HELPER FUNCTION: Send Email
-# ─────────────────────────────────────────────────────────────────────────────
+def send_smtp_message_sync(msg, mail_username, mail_password):
+    last_err = None
+    for attempt in range(1, 4):
+        try:
+            logger.info(f"SMTP send attempt {attempt}/3...")
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as smtp:
+                smtp.ehlo()
+                smtp.starttls()
+                smtp.ehlo()
+                smtp.login(mail_username, mail_password)
+                smtp.send_message(msg)
+            logger.info("SMTP send successful!")
+            return True
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"SMTP auth failed: {e}")
+            raise
+        except Exception as e:
+            last_err = e
+            logger.warning(f"SMTP attempt {attempt} failed: {e}. Traceback:\n{traceback.format_exc()}")
+            if attempt < 3:
+                time.sleep(1.5)
+    if last_err:
+        raise last_err
+
 
 def send_email_notification(to_emails: list, subject: str, body: str, attachments: list = None):
     """
@@ -759,17 +783,11 @@ def send_email_notification(to_emails: list, subject: str, body: str, attachment
                 )
         
         # Send email
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.ehlo()
-            smtp.login(mail_username, mail_password)
-            smtp.send_message(msg)
+        send_smtp_message_sync(msg, mail_username, mail_password)
         
         return True, "Email sent successfully"
         
     except smtplib.SMTPAuthenticationError as auth_err:
-        logger.error(f"SMTP Authentication failed: {auth_err}")
         return False, f"Email authentication failed: {str(auth_err)}"
     except Exception as e:
         logger.error(f"Email send error: {e}")
@@ -943,29 +961,23 @@ async def send_email(
                 filename=excel_name
             )
 
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-            try:
-                smtp.ehlo()
-                smtp.starttls()
-                smtp.ehlo()
-                
-                mail_username = os.getenv("MAIL_USERNAME")
-                mail_password = os.getenv("MAIL_PASSWORD")
-                
-                if not mail_username or not mail_password:
-                    return JSONResponse({
-                        "message": "Email credentials not configured. Please contact administrator.",
-                        "success": False
-                    }, status_code=500)
-                
-                smtp.login(mail_username, mail_password)
-                smtp.send_message(msg)
-            except smtplib.SMTPAuthenticationError as auth_err:
-                logger.error(f"SMTP Authentication failed: {auth_err}")
-                return JSONResponse({
-                    "message": "Email authentication failed. Please verify email credentials in settings.",
-                    "success": False
-                }, status_code=500)
+        mail_username = os.getenv("MAIL_USERNAME")
+        mail_password = os.getenv("MAIL_PASSWORD")
+        
+        if not mail_username or not mail_password:
+            return JSONResponse({
+                "message": "Email credentials not configured. Please contact administrator.",
+                "success": False
+            }, status_code=500)
+
+        try:
+            await asyncio.to_thread(send_smtp_message_sync, msg, mail_username, mail_password)
+        except smtplib.SMTPAuthenticationError as auth_err:
+            logger.error(f"SMTP Authentication failed: {auth_err}")
+            return JSONResponse({
+                "message": "Email authentication failed. Please verify email credentials in settings.",
+                "success": False
+            }, status_code=500)
         
         return JSONResponse({"message": "Email sent successfully", "success": True}, status_code=200)
     except Exception as e:
@@ -1430,30 +1442,23 @@ async def send_stock_count_email(
             filename=excel_name
         )
         
-        # Send
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as smtp:
-            try:
-                smtp.ehlo()
-                smtp.starttls()
-                smtp.ehlo()
-                
-                mail_username = os.getenv("MAIL_USERNAME")
-                mail_password = os.getenv("MAIL_PASSWORD")
-                
-                if not mail_username or not mail_password:
-                    return JSONResponse({
-                        "message": "Email credentials not configured. Please contact administrator.",
-                        "success": False
-                    }, status_code=500)
-                
-                smtp.login(mail_username, mail_password)
-                smtp.send_message(msg)
-            except smtplib.SMTPAuthenticationError as auth_err:
-                logger.error(f"SMTP Authentication failed: {auth_err}")
-                return JSONResponse({
-                    "message": "Email authentication failed. Please verify email credentials in settings.",
-                    "success": False
-                }, status_code=500)
+        mail_username = os.getenv("MAIL_USERNAME")
+        mail_password = os.getenv("MAIL_PASSWORD")
+        
+        if not mail_username or not mail_password:
+            return JSONResponse({
+                "message": "Email credentials not configured. Please contact administrator.",
+                "success": False
+            }, status_code=500)
+
+        try:
+            await asyncio.to_thread(send_smtp_message_sync, msg, mail_username, mail_password)
+        except smtplib.SMTPAuthenticationError as auth_err:
+            logger.error(f"SMTP Authentication failed: {auth_err}")
+            return JSONResponse({
+                "message": "Email authentication failed. Please verify email credentials in settings.",
+                "success": False
+            }, status_code=500)
         
         return JSONResponse({"message": "Email sent successfully", "success": True}, status_code=200)
         
