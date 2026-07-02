@@ -1946,7 +1946,7 @@ if (sendEmailForm) {
             filesList.classList.add('hidden');
             filesList.innerHTML = '';
             
-            showPopup(`Email sent successfully with ${fileInput.files.length} file(s) ✅`, 'success');
+            showPopup(`Email sent successfully ✅`, 'success');
         } catch (err) { 
             sendBtn.disabled = false; 
             sendBtn.textContent = 'Send Email'; 
