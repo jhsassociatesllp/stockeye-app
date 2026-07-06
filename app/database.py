@@ -35,6 +35,7 @@ admins_collection = db["Admins"]
 upload_history_collection = db["upload_history"]
 warehouse_master_collection = db["warehouse_master"]
 task_assignments_collection = db["task_assignments"]
+checklist_questions_collection = db["checklist_questions"]
 
 # GridFS for storing photo files
 fs = GridFS(db)

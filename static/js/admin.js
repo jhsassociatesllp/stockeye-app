@@ -64,6 +64,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 loadChecklistsData(1);
             } else if (target === 'reconciliation') {
                 // Don't auto-load reconciliation - user clicks "Load Report"
+            } else if (target === 'checklist-master') {
+                loadChecklistMaster();
             }
         }
 
@@ -125,6 +127,7 @@ document.addEventListener("DOMContentLoaded", () => {
         initReconciliation();
         initTaskAssignment();
         initAnalytics();
+        initChecklistMaster();
 
         // Inside initAdmin(), after other setups:
         document.getElementById('dash-refresh').addEventListener('click', loadAuditDashboard);
@@ -197,9 +200,199 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
     }
 
+    let checklistMasterSections = [];
+    let activeChecklistSection = null;
+
+    function initChecklistMaster() {
+        document.getElementById('checklist-add-question')?.addEventListener('click', () => openChecklistQuestionEditor());
+        document.getElementById('checklist-cancel-question')?.addEventListener('click', closeChecklistQuestionEditor);
+        document.getElementById('checklist-save-question')?.addEventListener('click', saveChecklistQuestionFromEditor);
+        document.getElementById('checklist-add-subquestion')?.addEventListener('click', () => addChecklistSubquestionRow());
+        document.getElementById('checklist-master-reset')?.addEventListener('click', async () => {
+            if (!activeChecklistSection) return;
+            const defaults = window.CHECKLIST_DEFAULTS?.[activeChecklistSection.section] || [];
+            activeChecklistSection.questions = defaults.map(q => ({ ...q, subquestions: (q.subquestions || []).map(s => ({ ...s })) }));
+            await saveChecklistSection(activeChecklistSection);
+            await loadChecklistMaster();
+        });
+    }
+
+    async function loadChecklistMaster() {
+        const defaults = window.CHECKLIST_DEFAULTS || {};
+        const titles = window.CHECKLIST_SECTION_TITLES || {};
+        checklistMasterSections = Object.keys(defaults).map(section => ({
+            section,
+            title: titles[section] || section.replace(/_/g, ' '),
+            questions: defaults[section].map(q => ({ ...q, subquestions: (q.subquestions || []).map(s => ({ ...s })) }))
+        }));
+        try {
+            const res = await fetch('/api/checklist-definitions', { headers: { 'Authorization': bearerToken } });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                (data.data?.sections || []).forEach(serverSection => {
+                    if (Array.isArray(serverSection.questions) && serverSection.questions.length) {
+                        const existing = checklistMasterSections.find(s => s.section === serverSection.section);
+                        if (existing) {
+                            existing.title = serverSection.title || existing.title;
+                            existing.questions = serverSection.questions;
+                        }
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn('Using checklist defaults in admin:', err);
+        }
+        activeChecklistSection = checklistMasterSections.find(s => s.section === activeChecklistSection?.section) || checklistMasterSections[0];
+        renderChecklistMaster();
+    }
+
+    function renderChecklistMaster() {
+        const sectionWrap = document.getElementById('checklist-master-sections');
+        const listWrap = document.getElementById('checklist-question-list');
+        if (!sectionWrap || !listWrap) return;
+        sectionWrap.innerHTML = checklistMasterSections.map(section => `
+            <button type="button" class="checklist-master-section w-full text-left px-3 py-2 rounded-lg text-sm font-semibold ${activeChecklistSection?.section === section.section ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'}" data-section="${section.section}">
+                ${escapeHtml(section.title)}
+                <span class="float-right text-xs text-gray-500">${section.questions.length}</span>
+            </button>
+        `).join('');
+        sectionWrap.querySelectorAll('.checklist-master-section').forEach(btn => {
+            btn.addEventListener('click', () => {
+                activeChecklistSection = checklistMasterSections.find(s => s.section === btn.dataset.section);
+                closeChecklistQuestionEditor();
+                renderChecklistMaster();
+            });
+        });
+
+        document.getElementById('checklist-master-title').textContent = activeChecklistSection?.title || 'Select a section';
+        document.getElementById('checklist-master-count').textContent = `${activeChecklistSection?.questions?.length || 0} questions`;
+        listWrap.innerHTML = '';
+        if (!activeChecklistSection?.questions?.length) {
+            listWrap.innerHTML = '<p class="text-gray-400 text-center py-6">No questions in this section.</p>';
+            return;
+        }
+        activeChecklistSection.questions.forEach((q, idx) => {
+            const subCount = (q.subquestions || []).length;
+            listWrap.innerHTML += `
+                <div class="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <div class="text-sm font-semibold text-gray-800">${idx + 1}. ${escapeHtml(q.question)}</div>
+                            <div class="mt-1 text-xs text-gray-500">${escapeHtml(q.field_type || 'yes_no_remarks')}${subCount ? ` - ${subCount} sub question(s)` : ''}</div>
+                        </div>
+                        <div class="flex gap-2 flex-shrink-0">
+                            <button class="edit-checklist-question text-indigo-600 hover:underline text-xs font-semibold" data-id="${escapeHtml(q.id || '')}"><i class="fas fa-edit mr-1"></i>Edit</button>
+                            <button class="delete-checklist-question text-red-600 hover:underline text-xs font-semibold" data-id="${escapeHtml(q.id || '')}"><i class="fas fa-trash mr-1"></i>Delete</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        listWrap.querySelectorAll('.edit-checklist-question').forEach(btn => {
+            btn.addEventListener('click', () => openChecklistQuestionEditor(activeChecklistSection.questions.find(item => item.id === btn.dataset.id)));
+        });
+        listWrap.querySelectorAll('.delete-checklist-question').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (!confirm('Delete this checklist question?')) return;
+                activeChecklistSection.questions = activeChecklistSection.questions.filter(item => item.id !== btn.dataset.id);
+                await saveChecklistSection(activeChecklistSection);
+                renderChecklistMaster();
+            });
+        });
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     //  AUDIT COMPLETION DASHBOARD (with client-side pagination)
     // ─────────────────────────────────────────────────────────────────────
+    function openChecklistQuestionEditor(question = null) {
+        document.getElementById('checklist-question-editor')?.classList.remove('hidden');
+        document.getElementById('checklist-editor-heading').textContent = question ? 'Edit Question' : 'New Question';
+        document.getElementById('checklist-edit-id').value = question?.id || '';
+        document.getElementById('checklist-edit-question').value = question?.question || '';
+        document.getElementById('checklist-edit-field-type').value = question?.field_type || 'yes_no_remarks';
+        document.getElementById('checklist-edit-remarks-on-no').checked = question?.requires_remarks_on_no ?? true;
+        const subList = document.getElementById('checklist-subquestion-list');
+        subList.innerHTML = '';
+        (question?.subquestions || []).forEach(sub => addChecklistSubquestionRow(sub));
+    }
+
+    function closeChecklistQuestionEditor() {
+        document.getElementById('checklist-question-editor')?.classList.add('hidden');
+    }
+
+    function addChecklistSubquestionRow(sub = {}) {
+        const subList = document.getElementById('checklist-subquestion-list');
+        const idx = subList.children.length + 1;
+        const row = document.createElement('div');
+        row.className = 'checklist-sub-row border border-gray-200 rounded-lg p-3 bg-gray-50';
+        row.dataset.id = sub.id || '';
+        row.innerHTML = `
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-semibold text-gray-700">Sub Question ${idx}</span>
+                <button type="button" class="remove-sub-question text-red-500 hover:text-red-700"><i class="fas fa-times"></i></button>
+            </div>
+            <textarea class="sub-question-text w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2" rows="2" placeholder="Sub question">${escapeHtml(sub.question || '')}</textarea>
+            <select class="sub-question-type w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="yes_no_remarks">Yes / No / Remarks</option>
+                <option value="number_remarks">Numerical Field + Remarks</option>
+                <option value="text_remarks">Text Field + Remarks</option>
+                <option value="date_remarks">Date Field + Remarks</option>
+            </select>
+        `;
+        subList.appendChild(row);
+        row.querySelector('.sub-question-type').value = sub.field_type || 'yes_no_remarks';
+        row.querySelector('.remove-sub-question').addEventListener('click', () => row.remove());
+    }
+
+    async function saveChecklistQuestionFromEditor() {
+        if (!activeChecklistSection) return;
+        const text = document.getElementById('checklist-edit-question').value.trim();
+        if (!text) {
+            alert('Please enter question text.');
+            return;
+        }
+        const existingId = document.getElementById('checklist-edit-id').value;
+        const id = existingId || `${activeChecklistSection.section}_${Date.now()}`;
+        const subquestions = Array.from(document.querySelectorAll('#checklist-subquestion-list .checklist-sub-row'))
+            .map((row, idx) => ({
+                id: row.dataset.id || `${id}_sub_${idx + 1}`,
+                question: row.querySelector('.sub-question-text').value.trim(),
+                field_type: row.querySelector('.sub-question-type').value,
+                requires_remarks_on_no: true,
+                subquestions: []
+            }))
+            .filter(sub => sub.question);
+        const question = {
+            id,
+            question: text,
+            field_type: document.getElementById('checklist-edit-field-type').value,
+            requires_remarks_on_no: document.getElementById('checklist-edit-remarks-on-no').checked,
+            subquestions
+        };
+        const idx = activeChecklistSection.questions.findIndex(q => q.id === id);
+        if (idx >= 0) activeChecklistSection.questions[idx] = question;
+        else activeChecklistSection.questions.push(question);
+        const saved = await saveChecklistSection(activeChecklistSection);
+        if (saved) {
+            closeChecklistQuestionEditor();
+            renderChecklistMaster();
+        }
+    }
+
+    async function saveChecklistSection(section) {
+        const res = await fetch(`/api/admin/checklist-definitions/${encodeURIComponent(section.section)}`, {
+            method: 'PUT',
+            headers: { 'Authorization': bearerToken, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: section.title, questions: section.questions })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            alert(data.message || 'Failed to save checklist questions.');
+            return false;
+        }
+        return true;
+    }
+
     let dashboardRows = [];
     let dashboardTotalStockCountItems = 0;
     let dashboardCurrentPage = 1;
@@ -634,6 +827,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const sectionList = [
                 { key: "general_report", label: "General Report" },
                 { key: "stock_reconciliation", label: "Stock Reconciliation" },
+                { key: "verification_status_previous_audit", label: "Verification Status of Previous Audit" },
                 { key: "observations_on_stacking", label: "Observations on Stacking" },
                 { key: "observations_on_warehouse_operations", label: "Warehouse Operations" },
                 { key: "observations_on_warehouse_record_keeping", label: "Record Keeping" },
@@ -669,11 +863,47 @@ document.addEventListener("DOMContentLoaded", () => {
                     else if (key === 'general_report') {
                         html += `<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">`;
                         Object.entries(data).forEach(([k, v]) => {
+                            if (k === 'previous_audits') return;
                             html += `<div><strong>${k.replace(/_/g, ' ')}:</strong> ${v || '—'}</div>`;
+                        });
+                        html += `</div>`;
+                        const prevAudits = Array.isArray(data.previous_audits) ? data.previous_audits : [];
+                        if (prevAudits.length) {
+                            html += `<div class="mt-4"><strong class="text-sm">Previous Audit Records:</strong><div class="mt-2 space-y-2">`;
+                            prevAudits.forEach((rec, i) => {
+                                html += `<div class="border rounded-lg p-3 text-sm bg-gray-50 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div><strong>Record ${i + 1} - Date:</strong> ${escapeHtml(rec.date || '—')}</div>
+                                    <div><strong>Auditor Name:</strong> ${escapeHtml(rec.auditor_name || '—')}</div>
+                                    <div><strong>Auditor Type:</strong> ${escapeHtml(rec.auditor_type || '—')}</div>
+                                    ${rec.agency_name ? `<div><strong>Agency Name:</strong> ${escapeHtml(rec.agency_name)}</div>` : ''}
+                                </div>`;
+                            });
+                            html += `</div></div>`;
+                        }
+                    }
+                    else if (key === 'stock_reconciliation' && Array.isArray(data.commodities)) {
+                        html += `<div class="space-y-4">`;
+                        data.commodities.forEach(item => {
+                            const rows = Array.isArray(item.stocks) && item.stocks.length ? item.stocks : [item];
+                            html += `<div class="border rounded-xl overflow-hidden"><div class="bg-gray-50 px-4 py-2 font-semibold">${escapeHtml(item.commodity_name || 'Commodity')}</div>`;
+                            rows.forEach(row => {
+                                html += `<div class="px-4 py-2 text-sm border-t grid grid-cols-1 md:grid-cols-3 gap-2">
+                                    <div><strong>Stock:</strong> ${escapeHtml(row.commodity || '—')}</div>
+                                    <div><strong>MCXCCL:</strong> ${escapeHtml(row.qty_mcxccl ?? '—')}</div>
+                                    <div><strong>Registered:</strong> ${escapeHtml(row.qty_registered ?? '—')}</div>
+                                    <div><strong>Physical:</strong> ${escapeHtml(row.qty_physical ?? '—')}</div>
+                                    <div><strong>Difference:</strong> ${escapeHtml(row.difference ?? '—')}</div>
+                                    <div><strong>Remarks:</strong> ${escapeHtml(row.remarks || '—')}</div>
+                                </div>`;
+                            });
+                            html += `</div>`;
                         });
                         html += `</div>`;
                     }
                     else if (data.questions && Array.isArray(data.questions)) {
+                        if (data.section_observations) {
+                            html += `<div class="mb-4 border-l-4 border-yellow-400 pl-4 py-3 bg-yellow-50 rounded-r-xl"><div class="font-semibold text-gray-800">Observations</div><div class="text-sm text-gray-700 mt-1">${escapeHtml(data.section_observations)}</div></div>`;
+                        }
                         html += `<div class="space-y-4">`;
                         data.questions.forEach(q => {
                             html += `

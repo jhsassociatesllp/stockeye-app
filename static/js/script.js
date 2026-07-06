@@ -224,6 +224,41 @@ function escapeHtml(value) {
         .replace(/'/g, '&#039;');
 }
 
+let checklistDefinitionCache = null;
+
+async function getChecklistDefinitions() {
+    if (checklistDefinitionCache) return checklistDefinitionCache;
+    const defaults = window.CHECKLIST_DEFAULTS || {};
+    const merged = {};
+    Object.entries(defaults).forEach(([section, questions]) => {
+        merged[section] = questions.map(q => ({ ...q, subquestions: (q.subquestions || []).map(s => ({ ...s })) }));
+    });
+    const token = localStorage.getItem('access_token');
+    if (token) {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/checklist-definitions`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                (data.data?.sections || []).forEach(section => {
+                    if (Array.isArray(section.questions) && section.questions.length) {
+                        merged[section.section] = section.questions;
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn('Checklist definitions fallback used:', err);
+        }
+    }
+    checklistDefinitionCache = merged;
+    return merged;
+}
+
+function normalizeQuestionId(section, idx, q) {
+    return q.id || `${section}_${idx + 1}`;
+}
+
 function formatTaskType(taskType) {
     return taskType === 'stock_count' ? 'Stock Count' : 'Checklist Audit';
 }
@@ -486,7 +521,7 @@ if (document.getElementById('section-list')) {
             completionStatus = { ...localCompletionStatus, ...serverStatus };
 
             sections = [
-                'general_report', 'stock_reconciliation',
+                'general_report', 'stock_reconciliation', 'verification_status_previous_audit',
                 'observations_on_stacking', 'observations_on_warehouse_operations',
                 'observations_on_warehouse_record_keeping', 'observations_on_wh_infrastructure',
                 'observations_on_quality_operation', 'checklist_wrt_exchange_circular_mentha_oil',
@@ -518,8 +553,12 @@ if (document.getElementById('section-list')) {
             if (submitButton) {
                 submitButton.classList.remove('hidden');
                 submitButton.onclick = () => {
-                    const allCompleted = Object.values(completionStatus).every(v => v === true);
-                    if (!allCompleted) { showPopup('Please fill the data for all the sections and save that.'); return; }
+                    const missingSections = sections.filter(s => completionStatus[s] !== true);
+                    if (missingSections.length) {
+                        const missingTitles = missingSections.map(s => s.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()));
+                        showPopup(`Please fill and save the remaining section(s) before submitting: ${missingTitles.join(', ')}.`, 'warning');
+                        return;
+                    }
 
                     document.getElementById('confirm-submit-msg').textContent = 'Do you want to submit the Checklist Audit?';
                     const confirmModal = document.getElementById('confirm-submit-modal');
@@ -573,7 +612,7 @@ if (document.getElementById('section-list')) {
                 
                 // Only check the checklist sections, not stock_count or other keys
                 const checklistSections = [
-                    'general_report', 'stock_reconciliation',
+                    'general_report', 'stock_reconciliation', 'verification_status_previous_audit',
                     'observations_on_stacking', 'observations_on_warehouse_operations',
                     'observations_on_warehouse_record_keeping', 'observations_on_wh_infrastructure',
                     'observations_on_quality_operation', 'checklist_wrt_exchange_circular_mentha_oil',
@@ -848,38 +887,78 @@ if (document.getElementById('section-list')) {
                         </div>
                         <div class="mt-3" id="commodity-body-${idx}">
                             <div class="mb-2"><label class="block text-gray-700 mb-1">Commodity Name <span class="mandatory-star">*</span></label><input type="text" id="commodity-name-${idx}" class="w-full p-2 border rounded-lg" placeholder="Enter Commodity Name"></div>
-                            <div class="mb-2"><label class="block text-gray-700 mb-1">Stock <span class="mandatory-star">*</span></label><select id="commodity-select-${idx}" class="w-full p-2 border rounded-lg"><option value="">-- Select Stock --</option><option value="Valid Stock">Valid Stock</option><option value="Under QC">Under QC</option><option value="Rejected">Rejected</option><option value="FED">FED</option><option value="Non-exchange">Non-exchange</option></select></div>
-                            <div class="mb-2"><label class="block text-gray-700 mb-1">Quantity as per MCXCCL <span class="mandatory-star">*</span></label><input type="number" id="qty-mcxccl-${idx}" min="0" step="any" class="w-full p-2 border rounded-lg"></div>
-                            <div class="mb-2"><label class="block text-gray-700 mb-1">Quantity as per Registered <span class="mandatory-star">*</span></label><input type="number" id="qty-registered-${idx}" min="0" step="any" class="w-full p-2 border rounded-lg"></div>
-                            <div class="mb-2"><label class="block text-gray-700 mb-1">Quantity as per Physical <span class="mandatory-star">*</span></label><input type="number" id="qty-physical-${idx}" min="0" step="any" class="w-full p-2 border rounded-lg"></div>
-                            <div class="mb-2"><label class="block text-gray-700 mb-1">Difference (Registered - Physical)</label><input type="text" id="difference-${idx}" readonly class="w-full p-2 border rounded-lg bg-gray-100"></div>
-                            <div class="mb-2"><label class="block text-gray-700 mb-1">Remarks</label><input type="text" id="remarks-${idx}" class="w-full p-2 border rounded-lg" placeholder="Remarks (optional)"></div>
+                            <div id="stock-row-list-${idx}" class="space-y-3"></div>
+                            <button type="button" id="add-stock-row-${idx}" class="mt-2 bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-200 text-sm font-semibold">
+                                <i class="fas fa-plus mr-1"></i>Add Stock Type
+                            </button>
                         </div>
                     `;
-                    if (dataObj) {
-                        document.getElementById(`commodity-name-${idx}`).value = dataObj.commodity_name || '';
-                        document.getElementById(`commodity-select-${idx}`).value = dataObj.commodity || '';
-                        document.getElementById(`qty-mcxccl-${idx}`).value = dataObj.qty_mcxccl || '';
-                        document.getElementById(`qty-registered-${idx}`).value = dataObj.qty_registered || '';
-                        document.getElementById(`qty-physical-${idx}`).value = dataObj.qty_physical || '';
-                        document.getElementById(`difference-${idx}`).value = dataObj.difference || '';
-                        document.getElementById(`remarks-${idx}`).value = dataObj.remarks || '';
-                        document.getElementById(`commodity-subtitle-${idx}`).textContent = dataObj.commodity_name || '';
-                    }
-                    function recompute() {
+                    if (dataObj) document.getElementById(`commodity-name-${idx}`).value = dataObj.commodity_name || '';
+
+                    function updateTitle() {
                         const name = document.getElementById(`commodity-name-${idx}`).value.trim();
-                        const stock = document.getElementById(`commodity-select-${idx}`).value.trim();
-                        const reg = parseFloat(document.getElementById(`qty-registered-${idx}`).value || 0);
-                        const phy = parseFloat(document.getElementById(`qty-physical-${idx}`).value || 0);
-                        const diff = reg - phy;
-                        document.getElementById(`difference-${idx}`).value = isNaN(diff) ? '' : diff;
+                        const stockCount = document.querySelectorAll(`#stock-row-list-${idx} .stock-row`).length;
                         document.getElementById(`commodity-title-${idx}`).textContent = name ? `Commodity ${idx} - ${name}` : `Commodity ${idx}`;
-                        document.getElementById(`commodity-subtitle-${idx}`).textContent = stock || '';
+                        document.getElementById(`commodity-subtitle-${idx}`).textContent = `${stockCount} stock type${stockCount === 1 ? '' : 's'}`;
                     }
-                    ['commodity-name-', 'commodity-select-', 'qty-mcxccl-', 'qty-registered-', 'qty-physical-'].forEach(prefix => {
-                        const el = document.getElementById(prefix + idx);
-                        if (el) { el.addEventListener('input', recompute); el.addEventListener('change', recompute); }
-                    });
+
+                    function addStockRow(rowData = {}) {
+                        const rowList = document.getElementById(`stock-row-list-${idx}`);
+                        const rowNo = rowList.children.length + 1;
+                        const row = document.createElement('div');
+                        row.className = 'stock-row border border-gray-200 rounded-lg p-3 bg-gray-50';
+                        row.dataset.row = rowNo;
+                        row.innerHTML = `
+                            <div class="flex justify-between items-center mb-2">
+                                <div class="font-semibold text-sm text-gray-700">Stock Type ${rowNo}</div>
+                                <button type="button" class="delete-stock-row text-red-500 hover:text-red-700" title="Delete Stock Type"><i class="fas fa-times"></i></button>
+                            </div>
+                            <div class="mb-2"><label class="block text-gray-700 mb-1">Stock <span class="mandatory-star">*</span></label><select class="stock-type w-full p-2 border rounded-lg"><option value="">-- Select Stock --</option><option value="Valid Stock">Valid Stock</option><option value="Under QC">Under QC</option><option value="Rejected">Rejected</option><option value="FED">FED</option><option value="Non-exchange">Non-exchange</option></select></div>
+                            <div class="mb-2"><label class="block text-gray-700 mb-1">Quantity as per MCXCCL <span class="mandatory-star">*</span></label><input type="number" min="0" step="any" class="qty-mcxccl w-full p-2 border rounded-lg"></div>
+                            <div class="mb-2"><label class="block text-gray-700 mb-1">Quantity as per Registered <span class="mandatory-star">*</span></label><input type="number" min="0" step="any" class="qty-registered w-full p-2 border rounded-lg"></div>
+                            <div class="mb-2"><label class="block text-gray-700 mb-1">Quantity as per Physical <span class="mandatory-star">*</span></label><input type="number" min="0" step="any" class="qty-physical w-full p-2 border rounded-lg"></div>
+                            <div class="mb-2"><label class="block text-gray-700 mb-1">Difference (Registered - Physical)</label><input type="text" readonly class="difference w-full p-2 border rounded-lg bg-gray-100"></div>
+                            <div class="mb-2"><label class="block text-gray-700 mb-1">Remarks</label><input type="text" class="stock-remarks w-full p-2 border rounded-lg" placeholder="Remarks (optional)"></div>
+                        `;
+                        rowList.appendChild(row);
+                        row.querySelector('.stock-type').value = rowData.commodity || '';
+                        row.querySelector('.qty-mcxccl').value = rowData.qty_mcxccl ?? '';
+                        row.querySelector('.qty-registered').value = rowData.qty_registered ?? '';
+                        row.querySelector('.qty-physical').value = rowData.qty_physical ?? '';
+                        row.querySelector('.difference').value = rowData.difference ?? '';
+                        row.querySelector('.stock-remarks').value = rowData.remarks || '';
+
+                        function recomputeRow() {
+                            const regRaw = row.querySelector('.qty-registered').value;
+                            const phyRaw = row.querySelector('.qty-physical').value;
+                            const reg = regRaw === '' ? NaN : parseFloat(regRaw);
+                            const phy = phyRaw === '' ? NaN : parseFloat(phyRaw);
+                            row.querySelector('.difference').value = isNaN(reg) || isNaN(phy) ? '' : reg - phy;
+                            updateTitle();
+                        }
+                        row.querySelectorAll('input, select').forEach(el => {
+                            el.addEventListener('input', recomputeRow);
+                            el.addEventListener('change', recomputeRow);
+                        });
+                        row.querySelector('.delete-stock-row').addEventListener('click', () => {
+                            if (rowList.children.length <= 1) {
+                                showPopup('At least one stock type is required for each commodity.', 'warning');
+                                return;
+                            }
+                            row.remove();
+                            Array.from(rowList.children).forEach((child, childIdx) => {
+                                child.dataset.row = childIdx + 1;
+                                child.querySelector('.font-semibold').textContent = `Stock Type ${childIdx + 1}`;
+                            });
+                            updateTitle();
+                        });
+                        recomputeRow();
+                    }
+
+                    document.getElementById(`commodity-name-${idx}`).addEventListener('input', updateTitle);
+                    document.getElementById(`add-stock-row-${idx}`).addEventListener('click', () => addStockRow());
+                    const initialStocks = Array.isArray(dataObj?.stocks) && dataObj.stocks.length ? dataObj.stocks : [dataObj || {}];
+                    initialStocks.forEach(stock => addStockRow(stock));
                     document.getElementById(`commodity-header-${idx}`).addEventListener('click', (ev) => {
                         if (ev.target.closest(`#delete-${idx}`)) return;
                         document.getElementById(`commodity-body-${idx}`)?.classList.toggle('hidden');
@@ -892,17 +971,58 @@ if (document.getElementById('section-list')) {
                             if (title) title.textContent = `Commodity ${ni + 1}${nameInput?.value.trim() ? ' - ' + nameInput.value.trim() : ''}`;
                         });
                     });
+                    updateTitle();
                 }
 
                 const initialCommodities = Array.isArray(sectionData.commodities) ? sectionData.commodities : [];
                 if (initialCommodities.length > 0) initialCommodities.forEach(obj => createCommodityCard(obj));
                 else createCommodityCard();
                 addBtn.onclick = () => { createCommodityCard(); commodityList.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
-            } else if (['observations_on_stacking', 'observations_on_warehouse_operations', 'observations_on_warehouse_record_keeping',
+            } else if (['verification_status_previous_audit',
+                'observations_on_stacking', 'observations_on_warehouse_operations', 'observations_on_warehouse_record_keeping',
                 'observations_on_wh_infrastructure', 'observations_on_quality_operation',
                 'checklist_wrt_exchange_circular_mentha_oil', 'checklist_wrt_exchange_circular_metal',
                 'checklist_wrt_exchange_circular_cotton_bales'].includes(section)) {
                 // All question-based sections — questions array comes from existing code unchanged
+                const definitions = await getChecklistDefinitions();
+                const dynamicQuestions = definitions[section] || [];
+
+                function renderInputGroup(q, indexKey, saved = {}) {
+                    const type = q.field_type || 'yes_no_remarks';
+                    const qid = indexKey.replace(/[^a-zA-Z0-9_-]/g, '_');
+                    const savedAnswer = saved.answer || '';
+                    const savedValue = saved.value ?? '';
+                    const savedRemarks = saved.remarks || '';
+                    if (['number_remarks', 'text_remarks', 'date_remarks'].includes(type)) {
+                        const inputType = type === 'number_remarks' ? 'number' : type === 'date_remarks' ? 'date' : 'text';
+                        return `<input type="${inputType}" data-question-field="value" value="${escapeHtml(savedValue)}" class="w-full p-2.5 border border-gray-300 rounded-lg mb-2" ${inputType === 'number' ? 'step="any" min="0"' : ''} placeholder="Enter value"><input type="text" data-question-field="remarks" value="${escapeHtml(savedRemarks)}" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Remarks">`;
+                    }
+                    return `<div class="flex space-x-4 mb-2"><label><input type="radio" name="answer-${qid}" value="Yes" ${savedAnswer === 'Yes' ? 'checked' : ''} required> Yes</label><label><input type="radio" name="answer-${qid}" value="No" ${savedAnswer === 'No' ? 'checked' : ''}> No</label><label><input type="radio" name="answer-${qid}" value="NA" ${savedAnswer === 'NA' ? 'checked' : ''}> NA</label></div><input type="text" data-question-field="remarks" value="${escapeHtml(savedRemarks)}" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Remarks">`;
+                }
+
+                function savedForQuestion(q, i) {
+                    return (sectionData.questions || []).find(item => item.id && item.id === q.id) || (sectionData.questions || [])[i] || {};
+                }
+
+                if (dynamicQuestions.length) {
+                    form.innerHTML = '';
+                    dynamicQuestions.forEach((q, i) => {
+                        const saved = savedForQuestion(q, i);
+                        const qid = normalizeQuestionId(section, i, q);
+                        const subHtml = (q.subquestions || []).map((sub, si) => {
+                            const savedSub = (saved.subquestions || []).find(item => item.id && item.id === sub.id) || (saved.subquestions || [])[si] || {};
+                            const subKey = `${qid}_sub_${si}`;
+                            return `<div class="question-subitem ml-4 mt-3 border-l-4 border-indigo-100 pl-3" data-question-id="${escapeHtml(sub.id || subKey)}" data-field-type="${escapeHtml(sub.field_type || 'yes_no_remarks')}"><label class="block text-gray-700 font-medium mb-2">${String.fromCharCode(97 + si)}. ${escapeHtml(sub.question)} <span class="mandatory-star">*</span></label>${renderInputGroup(sub, subKey, savedSub)}</div>`;
+                        }).join('');
+                        form.innerHTML += `<div class="question-item mb-4 bg-white p-3 rounded-lg border border-gray-200" data-question-id="${escapeHtml(qid)}" data-field-type="${escapeHtml(q.field_type || 'yes_no_remarks')}"><label class="block text-gray-800 font-medium mb-2">${i + 1}. ${escapeHtml(q.question)} <span class="mandatory-star">*</span></label>${renderInputGroup(q, qid, saved)}${subHtml}</div>`;
+                    });
+                    form.innerHTML += `<div class="mb-4"><label class="block text-gray-800 font-medium mb-2">Observations</label><textarea id="section-observations" rows="4" class="w-full p-2.5 border border-gray-300 rounded-lg" placeholder="Write section observations">${escapeHtml(sectionData.section_observations || '')}</textarea></div>`;
+                    form.innerHTML += `<button type="button" id="save-section" class="w-full bg-indigo-600 text-white p-2.5 rounded-lg hover:bg-indigo-700">Save</button>`;
+                    form.querySelectorAll('input[type="radio"], input[data-question-field]').forEach(input => {
+                        input.addEventListener('input', () => input.closest('.question-item, .question-subitem')?.classList.remove('border-red-500', 'bg-red-50'));
+                        input.addEventListener('change', () => input.closest('.question-item, .question-subitem')?.classList.remove('border-red-500', 'bg-red-50'));
+                    });
+                } else {
                 const questionsMap = {
                     observations_on_stacking: ["Whether the appearance of the stored stocks is neat and free from dust/stains of oil, rust, cracks etc.?", "Whether Packaging condition of stock deposited is as per MCXCCL norms/ procedure guidelines/ relevant circulars as mentioned below? Cotton - Circular no. MCXCCL/WHL/249/2023 dated October 16, 2023 Mentha Oil- Circular no. MCXCCL/WHL/141/2021 dated May 31, 2021 Aluminium: Circular no. MCXCCL/WHL/045/2023 dated February 16, 2023 Lead: Circular no. MCXCCL/WHL/220/2023 dated September 15, 2023 Copper: Circular no. MCXCCL/WHL/868/2020 dated November 23, 2020 Zinc: Circular no. MCXCCL/WHL/044/2023 dated February 16, 2023 Nickel: Circular no. MCXCCL/WHL/868/2020 dated November 23, 2020 Note: any subsequent circular issued for above mentioned commodity shall be referred for compliance Metal & Cotton - no straps should be broken in exchange deliverable stocks", "Whether the stacking of the stock is done as per WDRA guidelines (as applicable) or as per MCXCCL? Whether stock is in countable position, stacking done appropriately & is there any co-mingling of lots?", "Whether adequate alleyways & gangways between stacks & wall to stacks are kept for easy movement, aeration & chemical treatments, physical verification, etc.?", "Whether proper stack layout / stacks plan displayed at warehouse floor?", "Whether lot cards in WSP format are placed on all the stored stocks with up to date entries of all transactions within two working days of transaction/receipt creation?", "Whether overwriting / corrections are found in lot cards?", "Whether suitable dunnage material, as per good warehousing practices available (except mentha oil/ metals) for stored goods?", "Whether lot sealing/drum/drum sealing (for Mentha Oil) for all lots/drums deposited /retested is done within two working days of transaction?", "Whether the Warehouse staff has checked the seal intactness of stocks every month? (Pls verify lot seal register & Monthly declaration stating seals have been checked)", "Is there any spillage or damage material lying spread across the stack or floor? If yes, whether the same is appropriately packed and is kept in demarcated area on the same day?", "Is there a designated area inside the warehouse mentioning the floor area in square feet/meter for FED goods, rejected goods and non-Exchange goods available for storage in the warehouse?", "Is any FED Stock lying for more than 3 months? / Any rejected stock lying in warehouse? If Yes, whether marking/ tagging/placard on such lot card or Stock and follow-up with client for lifting of such stocks is done by WSP?", "Is any stock of identical (exchange grade) agri commodity,for which MCXCCL has accredited the warehouse, stored in the warehouse?", "Is there any other agri commodity which is not in the WDRA registration certificate, stored in the warehouse?", "Has WSP stored its 'own' commodity in the warehouse?", "Is any stock of identical non-agri commodity stored in MCXCCL accredited Metal warehouse Other than approved commodity?", "Whether visual demarcation between MCX deliverable, Non-exchange & Rejected stock is done or not?", "In case Non Exchange stock kept in MCXCCL accredited capacity is it kept with clear demarcation?", "Whether details like hypothecation / lien / pledge to any financial institutions for the purpose of funding has been displayed on the stock and the same has been recorded?", "Whether non exchange goods stored in accredited space and approval from MCXCCL is taken and available at warehouse?"],
                     observations_on_warehouse_operations: ["Whether custody of Navtal brand lock and key of the warehouse/godown is with WSP/WH Owner/others? (Pls specify) Whether additional key of Warehouse available at WSP Head office/WSP regional office and details are updated in Key distribution register?", "Does the WSP use lock seals at every lock of all shutters which are used for transaction of goods? Whether seal details are captured in register.", "Does the warehouse change Navtal brand locks every six months in June and December? Verify the serial number of lock and key, date when it was last changed.", "Specify the number of WH staffs deployed at the warehouse/warehouse complex.", "Indicate number of security guards deployed shift wise.", "Mention name of the Security Agency offering security services at the WH.", "Whether WH staff and Security personnel carrying their identity cards, and are in proper uniform and with baton, torch, whistle etc? Whether security guards checks for any presence of matchbox, gas lighter, chemicals and inflammable items of person entering the warehouse?", "Whether security guard stays inside or outside the warehouse premises?", "Whether there are proper night lighting in warehouse premises for the security purpose?", "Whether proper WSP Sign Board (flex/board/wall-painting) and sign board of MCXCCL accreditation with WSP contact details, No Smoking signage in local dialect, emergency numbers, unauthorized entry, unauthorized parking etc are displayed?", "Whether the board of \"Complaint/feedback register available at warehouse\" is displayed at the warehouse? (Pls mention the place of display of the board)", "Whether Fire Fighting equipment available as per the WDRA guidelines? Please specify below; a. No. of Fire Extinguishers b. No. of Sand Buckets c. Capacity of water tank available as per operational guidelines? d. Is water pump attached to storage tank with hose pipe? e. Availability of water fire hydrant points/sprinkler system for Cotton Bales. f. Whether fire extinguishers are valid & in working condition? Are the expiry dates/next-due date clearly visible?", "Whether the warehouse staff have undergone the training of fire safety & handling of firefighting equipment from the date of joining? (Please verify with records)", "Whether mock drill for fire fighting is conducted at least once in a year? Verify the record of mock drill.", "Is the Warehouse Manager/ Supervisor of the WSP trained in handling warehousing operations, specifically for MCXCCL? Is the skill enhancement training given to the staff in an interval of 6 months? Verify the training record.", "Whether the security personnel have undergone training on fire safety & handling of firefighting equipment from the date of joining? (verify with records and frequency) Mention the name of the official by whom training is provided. Is the follow up training provided on annual basis to the warehouse staff by the WSP?", "Is the arrangement for Prophylactic Measures for Pest Control available at the WH as per WDRA guidelines? (Verify the records of the treatment)", "Is anti-termite treatment at cotton bales warehouses conducted through MCXCCL specified agencies? (Verify the records of the treatment).", "Whether Live Electricity connection found inside the godown where cotton is stored?", "Is the WSP using electricity for weighment purpose only at Mentha oil and metals at warehouses?", "Whether Storage of hazardous Stock (Like fertilizer, Cement, Chemical etc.) in warehouse premises is done that may affect exchange deliverable stock?", "Whether LPG cylinder kept inside warehouse or outside warehouse? (Applicable for Mentha oil)", "Availability of functional, Valid and calibrated weighbridge (Inside / Outside complex)-for base metals – 3 /5 MT capacity (Yes/No) Name of weighbridge/manual weigh scale –WB capacity (MT)- Expiry date of calibration A B C", "Is a written consent of client and approval from MCXCCL sought in case weighment of the commodity is done on any other weighbridge when MCXCCL approved weighbridges are non-functional?", "Whether the list of weighbridge (accredited weighbridge for cotton bales) along with calibration certificate displayed in the warehouse?", "Whether periodic stock audit done by Independent team other than of the same warehouse deployed staffs? (verify with visitor register at the warehouse)", "Whether the storage structure (warehouse) is far away (150 meter) from the source of fire-hazard, such as timber stores, petrol/CNG/PNG pumping stations/LPG bottling plant?", "Availability of standard weights with calibration certificate at warehouse."],
@@ -945,6 +1065,7 @@ if (document.getElementById('section-list')) {
                         }
                     });
                 });
+                }
             } else if (section === 'signature') {
                 const sectionForm = document.getElementById('section-form');
                 if (sectionForm) sectionForm.classList.add('hidden');
@@ -1661,24 +1782,74 @@ if (document.getElementById('section-list')) {
                 Array.from(commodityList.children).forEach((card, idx) => {
                     const suf = card.id.split('commodity-card-')[1] || (idx + 1);
                     const commodityName = document.getElementById(`commodity-name-${suf}`)?.value.trim() || '';
-                    const commodity = document.getElementById(`commodity-select-${suf}`)?.value.trim() || '';
-                    const qtyMcxcclRaw = document.getElementById(`qty-mcxccl-${suf}`)?.value.trim() || '';
-                    const qtyRegisteredRaw = document.getElementById(`qty-registered-${suf}`)?.value.trim() || '';
-                    const qtyPhysicalRaw = document.getElementById(`qty-physical-${suf}`)?.value.trim() || '';
-                    const qtyMcxccl = qtyMcxcclRaw === '' ? null : parseFloat(qtyMcxcclRaw);
-                    const qtyRegistered = qtyRegisteredRaw === '' ? null : parseFloat(qtyRegisteredRaw);
-                    const qtyPhysical = qtyPhysicalRaw === '' ? null : parseFloat(qtyPhysicalRaw);
                     if (!commodityName) validationErrors.push(`Commodity Name is required for row ${idx + 1}.`);
-                    if (!commodity) validationErrors.push(`Stock Type is required for row ${idx + 1}.`);
-                    if (qtyMcxcclRaw === '' || isNaN(qtyMcxccl)) validationErrors.push(`Quantity as per MCXCCL is required and must be numeric for row ${idx + 1}.`);
-                    if (qtyRegisteredRaw === '' || isNaN(qtyRegistered)) validationErrors.push(`Quantity as per Registered is required and must be numeric for row ${idx + 1}.`);
-                    if (qtyPhysicalRaw === '' || isNaN(qtyPhysical)) validationErrors.push(`Quantity as per Physical is required and must be numeric for row ${idx + 1}.`);
-                    const difference = (qtyRegistered !== null && qtyPhysical !== null) ? (qtyRegistered - qtyPhysical) : null;
-                    data.commodities.push({ commodity_name: commodityName, commodity, qty_mcxccl: qtyMcxccl, qty_registered: qtyRegistered, qty_physical: qtyPhysical, difference, remarks: document.getElementById(`remarks-${suf}`)?.value?.trim() || '' });
+                    const stocks = [];
+                    const stockRows = card.querySelectorAll('.stock-row');
+                    if (!stockRows.length) validationErrors.push(`At least one stock type is required for commodity ${idx + 1}.`);
+                    stockRows.forEach((row, rowIdx) => {
+                        const commodity = row.querySelector('.stock-type')?.value.trim() || '';
+                        const qtyMcxcclRaw = row.querySelector('.qty-mcxccl')?.value.trim() || '';
+                        const qtyRegisteredRaw = row.querySelector('.qty-registered')?.value.trim() || '';
+                        const qtyPhysicalRaw = row.querySelector('.qty-physical')?.value.trim() || '';
+                        const qtyMcxccl = qtyMcxcclRaw === '' ? null : parseFloat(qtyMcxcclRaw);
+                        const qtyRegistered = qtyRegisteredRaw === '' ? null : parseFloat(qtyRegisteredRaw);
+                        const qtyPhysical = qtyPhysicalRaw === '' ? null : parseFloat(qtyPhysicalRaw);
+                        const rowLabel = `${idx + 1}.${rowIdx + 1}`;
+                        if (!commodity) validationErrors.push(`Stock Type is required for row ${rowLabel}.`);
+                        if (qtyMcxcclRaw === '' || isNaN(qtyMcxccl)) validationErrors.push(`Quantity as per MCXCCL is required and must be numeric for row ${rowLabel}.`);
+                        if (qtyRegisteredRaw === '' || isNaN(qtyRegistered)) validationErrors.push(`Quantity as per Registered is required and must be numeric for row ${rowLabel}.`);
+                        if (qtyPhysicalRaw === '' || isNaN(qtyPhysical)) validationErrors.push(`Quantity as per Physical is required and must be numeric for row ${rowLabel}.`);
+                        const difference = (qtyRegistered !== null && qtyPhysical !== null) ? (qtyRegistered - qtyPhysical) : null;
+                        stocks.push({
+                            commodity,
+                            qty_mcxccl: qtyMcxccl,
+                            qty_registered: qtyRegistered,
+                            qty_physical: qtyPhysical,
+                            difference,
+                            remarks: row.querySelector('.stock-remarks')?.value.trim() || ''
+                        });
+                    });
+                    data.commodities.push({ commodity_name: commodityName, stocks });
                 });
             }
         } else {
             data.questions = [];
+            const dynamicItems = document.querySelectorAll('#section-form > .question-item');
+            if (dynamicItems.length) {
+                data.section_observations = document.getElementById('section-observations')?.value.trim() || '';
+
+                function readQuestionNode(node, numberLabel) {
+                    const fieldType = node.dataset.fieldType || 'yes_no_remarks';
+                    const label = node.querySelector(':scope > label')?.innerText.replace(/^\d+\.\s/, '').replace(/^[a-z]\.\s/i, '').replace(/\s\*$/, '') || '';
+                    const item = {
+                        id: node.dataset.questionId || numberLabel,
+                        question: label,
+                        field_type: fieldType,
+                        remarks: node.querySelector(':scope > input[data-question-field="remarks"]')?.value.trim() || '',
+                    };
+                    if (['number_remarks', 'text_remarks', 'date_remarks'].includes(fieldType)) {
+                        item.value = node.querySelector(':scope > input[data-question-field="value"]')?.value.trim() || '';
+                        if (!item.value) {
+                            validationErrors.push(`Value is required for question ${numberLabel}.`);
+                            node.classList.add('border-red-500', 'bg-red-50');
+                        }
+                    } else {
+                        const checked = node.querySelector(':scope > div input[type="radio"]:checked');
+                        item.answer = checked?.value || '';
+                        if (!item.answer) {
+                            validationErrors.push(`Answer is required for question ${numberLabel}.`);
+                            node.classList.add('border-red-500', 'bg-red-50');
+                        } else if (item.answer === 'No' && !item.remarks) {
+                            validationErrors.push(`Remarks are required for question ${numberLabel} answered as 'No'.`);
+                            node.classList.add('border-red-500', 'bg-red-50');
+                        }
+                    }
+                    item.subquestions = Array.from(node.querySelectorAll(':scope > .question-subitem')).map((subNode, si) => readQuestionNode(subNode, `${numberLabel}.${si + 1}`));
+                    return item;
+                }
+
+                dynamicItems.forEach((node, i) => data.questions.push(readQuestionNode(node, String(i + 1))));
+            } else {
             // Only select remarks inputs within the current section form
             const sectionForm = document.getElementById('section-form');
             const remarksInputs = sectionForm ? sectionForm.querySelectorAll('[id^="remarks"]') : [];
@@ -1717,6 +1888,7 @@ if (document.getElementById('section-list')) {
             
             if (!allAnswered) {
                 validationErrors.push(`All questions are mandatory. Please answer questions: ${unansweredQuestions.join(', ')}`);
+            }
             }
         }
 
@@ -2438,7 +2610,7 @@ async function loadChecklistHistory() {
                             <div class="text-xs text-gray-500">${h.date} • Submitted: ${new Date(h.submitted_at).toLocaleString()}</div>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span class="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Submitted</span>
+                            <span class="px-2 py-1 rounded-full text-xs font-semibold ${pct === 100 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">${pct === 100 ? 'Submitted' : 'Incomplete'}</span>
                             <button onclick="downloadHistoryExcel('${h.audit_id}')"
                                 class="px-2 py-1 rounded-lg text-xs font-semibold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 flex items-center gap-1">
                                 <i class="fas fa-download"></i> Excel

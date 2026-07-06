@@ -58,6 +58,7 @@ from app.database import (
     upload_history_collection,
     warehouse_master_collection,
     task_assignments_collection,
+    checklist_questions_collection,
 )
 from app.models import AuditForm, UserLogin, UserRegister
 
@@ -94,13 +95,27 @@ base_response = {
 }
 
 CHECKLIST_SECTIONS = [
-    "general_report", "stock_reconciliation",
+    "general_report", "stock_reconciliation", "verification_status_previous_audit",
     "observations_on_stacking", "observations_on_warehouse_operations",
     "observations_on_warehouse_record_keeping", "observations_on_wh_infrastructure",
     "observations_on_quality_operation", "checklist_wrt_exchange_circular_mentha_oil",
     "checklist_wrt_exchange_circular_metal", "checklist_wrt_exchange_circular_cotton_bales",
     "signature", "photo",
 ]
+
+QUESTION_SECTION_TITLES = {
+    "verification_status_previous_audit": "Verification Status of Previous Audit",
+    "observations_on_stacking": "Observations on Stacking",
+    "observations_on_warehouse_operations": "Observations on Warehouse Operations",
+    "observations_on_warehouse_record_keeping": "Observations on Warehouse Record Keeping",
+    "observations_on_wh_infrastructure": "Observations on WH Infrastructure",
+    "observations_on_quality_operation": "Observations on Quality Operation",
+    "checklist_wrt_exchange_circular_mentha_oil": "Checklist WRT Exchange Circular - Mentha Oil",
+    "checklist_wrt_exchange_circular_metal": "Checklist WRT Exchange Circular - Metal",
+    "checklist_wrt_exchange_circular_cotton_bales": "Checklist WRT Exchange Circular - Cotton Bales",
+}
+
+QUESTION_SECTIONS = list(QUESTION_SECTION_TITLES.keys())
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  USER NAME CACHE  (avoids repeated DB hits for admin endpoints)
@@ -329,18 +344,21 @@ async def generate_checklist_excel_bytes(emp_id: str, audit_data: dict) -> bytes
     stock = sections.get("stock_reconciliation", {}).get("commodities", [])
     if stock:
         for item in stock:
-            ws.append([
-                item.get("commodity_name", ""), item.get("commodity", ""),
-                item.get("qty_mcxccl", ""), item.get("qty_registered", ""),
-                item.get("qty_physical", ""), item.get("difference", ""),
-                item.get("remarks", ""),
-            ])
+            stock_rows = item.get("stocks") if isinstance(item.get("stocks"), list) else [item]
+            for stock_row in stock_rows:
+                ws.append([
+                    item.get("commodity_name", ""), stock_row.get("commodity", ""),
+                    stock_row.get("qty_mcxccl", ""), stock_row.get("qty_registered", ""),
+                    stock_row.get("qty_physical", ""), stock_row.get("difference", ""),
+                    stock_row.get("remarks", ""),
+                ])
     else:
         ws.append(["No stock data.", "", "", "", "", "", ""])
     _adjust_ws(ws, [20, 20, 20, 20, 20, 20, 30])
 
     # Question-based sections
     q_sections = [
+        ("verification_status_previous_audit",          "Previous Audit Verification"),
         ("observations_on_stacking",                    "Observations on Stacking"),
         ("observations_on_warehouse_operations",        "Observations on WH Operations"),
         ("observations_on_warehouse_record_keeping",    "Observations on WH Record Keeping"),
@@ -352,15 +370,30 @@ async def generate_checklist_excel_bytes(emp_id: str, audit_data: dict) -> bytes
     ]
     for key, title in q_sections:
         ws = wb.create_sheet(title)
-        ws.append(["Question", "Yes/No", "Remarks"])
+        ws.append(["Question", "Answer", "Remarks"])
+        section_observations = sections.get(key, {}).get("section_observations", "")
+        if section_observations:
+            ws.append(["Section Observations", "", str(section_observations)])
         qlist = sections.get(key, {}).get("questions", [])
         if qlist:
             for idx, q in enumerate(qlist, 1):
+                answer = q.get("answer", "")
+                if not answer and q.get("value") not in (None, ""):
+                    answer = q.get("value", "")
                 ws.append([
                     f"{idx}. {q.get('question', f'Question {idx}').strip()}",
-                    q.get("answer", "").strip(),
-                    q.get("remarks", "").strip(),
+                    str(answer).strip(),
+                    str(q.get("remarks", "")).strip(),
                 ])
+                for sub_idx, sub in enumerate(q.get("subquestions", []) or [], 1):
+                    sub_answer = sub.get("answer", "")
+                    if not sub_answer and sub.get("value") not in (None, ""):
+                        sub_answer = sub.get("value", "")
+                    ws.append([
+                        f"  {idx}.{sub_idx} {sub.get('question', f'Subquestion {sub_idx}').strip()}",
+                        str(sub_answer).strip(),
+                        str(sub.get("remarks", "")).strip(),
+                    ])
         else:
             ws.append(["No data saved.", "", ""])
         _adjust_ws(ws, [60, 10, 30])
@@ -1585,6 +1618,99 @@ async def check_admin(emp_id: str = Depends(get_current_user)):
         return JSONResponse({"message": f"Server error: {e}", "success": False}, status_code=500)
 
 
+@app.get("/api/checklist-definitions")
+async def checklist_definitions(emp_id: str = Depends(get_current_user)):
+    try:
+        docs = list(checklist_questions_collection.find({}, {"_id": 0}))
+        stored = {doc.get("section"): doc for doc in docs if doc.get("section")}
+        sections = []
+        for key in QUESTION_SECTIONS:
+            doc = stored.get(key) or {}
+            sections.append({
+                "section": key,
+                "title": doc.get("title") or QUESTION_SECTION_TITLES[key],
+                "questions": doc.get("questions") or [],
+            })
+        return JSONResponse({
+            "message": "Checklist definitions fetched",
+            "success": True,
+            "data": {"sections": sections},
+        })
+    except Exception as e:
+        logger.error(f"checklist-definitions error: {e}")
+        return JSONResponse({"message": f"Server error: {e}", "success": False}, status_code=500)
+
+
+@app.put("/api/admin/checklist-definitions/{section_name}")
+async def admin_save_checklist_definition(
+    section_name: str,
+    request: Request,
+    emp_id: str = Depends(get_current_user),
+):
+    try:
+        require_admin(emp_id)
+        if section_name not in QUESTION_SECTIONS:
+            return JSONResponse({"message": "Invalid checklist section", "success": False}, status_code=400)
+        body = await request.json()
+        questions = body.get("questions")
+        if not isinstance(questions, list):
+            return JSONResponse({"message": "questions must be a list", "success": False}, status_code=400)
+        cleaned = []
+        for idx, q in enumerate(questions, 1):
+            text = str(q.get("question", "")).strip()
+            if not text:
+                continue
+            field_type = str(q.get("field_type") or "yes_no_remarks")
+            subquestions = q.get("subquestions") if isinstance(q.get("subquestions"), list) else []
+            cleaned.append({
+                "id": str(q.get("id") or f"q{idx}"),
+                "question": text,
+                "field_type": field_type,
+                "requires_remarks_on_no": bool(q.get("requires_remarks_on_no", field_type == "yes_no_remarks")),
+                "subquestions": subquestions,
+            })
+        checklist_questions_collection.update_one(
+            {"section": section_name},
+            {"$set": {
+                "section": section_name,
+                "title": body.get("title") or QUESTION_SECTION_TITLES[section_name],
+                "questions": cleaned,
+                "updated_by": emp_id,
+                "updated_at": datetime.now(timezone.utc),
+            }},
+            upsert=True,
+        )
+        return JSONResponse({"message": "Checklist definition saved", "success": True, "data": {"questions": cleaned}})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"admin-save-checklist-definition error: {e}")
+        return JSONResponse({"message": f"Server error: {e}", "success": False}, status_code=500)
+
+
+@app.delete("/api/admin/checklist-definitions/{section_name}/{question_id}")
+async def admin_delete_checklist_question(
+    section_name: str,
+    question_id: str,
+    emp_id: str = Depends(get_current_user),
+):
+    try:
+        require_admin(emp_id)
+        result = checklist_questions_collection.update_one(
+            {"section": section_name},
+            {
+                "$pull": {"questions": {"id": question_id}},
+                "$set": {"updated_by": emp_id, "updated_at": datetime.now(timezone.utc)},
+            },
+        )
+        return JSONResponse({"message": "Question deleted", "success": True, "data": {"modified": result.modified_count}})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"admin-delete-checklist-question error: {e}")
+        return JSONResponse({"message": f"Server error: {e}", "success": False}, status_code=500)
+
+
 @app.get("/api/admin/employees-stats")
 async def get_employees_stats(
     page: int = 1,
@@ -1764,17 +1890,17 @@ async def audit_dashboard(
         for d in submitted:
             cs = d.get("completion_status", {})
             completed_count = sum(1 for s in CHECKLIST_SECTIONS if cs.get(s, False))
-            has_checklist = completed_count > 0
+            is_checklist_complete = completed_count == len(CHECKLIST_SECTIONS)
             stock_count_items = len(d.get("stock_count_data", []))
             submitted_at = d.get("submitted_at", "")
             if isinstance(submitted_at, datetime):
                 submitted_at = submitted_at.isoformat()
             user_email = d.get("user_id", "")
-            
+
             # Extract warehouse info
             general_report = d.get("sections", {}).get("general_report", {})
             warehouse_name = general_report.get("warehouse_name", "Unknown Warehouse")
-            
+
             rows.append({
                 "user_id": user_email,
                 "user_name": name_map.get(user_email, user_email),
@@ -1783,7 +1909,7 @@ async def audit_dashboard(
                 "checklist_completed": completed_count,
                 "checklist_total": len(CHECKLIST_SECTIONS),
                 "checklist_pct": round(completed_count / len(CHECKLIST_SECTIONS) * 100),
-                "checklist_status": "Submitted" if has_checklist else "Pending",
+                "checklist_status": "Submitted" if is_checklist_complete else ("In Progress" if completed_count else "Pending"),
                 "stock_count_items": stock_count_items,
                 "stock_count_status": "Submitted" if cs.get("stock_count") else ("In Progress" if stock_count_items else "Pending"),
                 "status": "Submitted",
@@ -1793,14 +1919,13 @@ async def audit_dashboard(
         for d in in_progress:
             cs = d.get("completion_status", {})
             completed_count = sum(1 for s in CHECKLIST_SECTIONS if cs.get(s, False))
-            has_checklist = completed_count > 0
             stock_count_items = len(d.get("stock_count_data", []))
             user_email = d.get("user_id", "")
-            
+
             # Extract warehouse info
             general_report = d.get("sections", {}).get("general_report", {})
             warehouse_name = general_report.get("warehouse_name", "In Progress")
-            
+
             rows.append({
                 "user_id": user_email,
                 "user_name": name_map.get(user_email, user_email),
@@ -1809,7 +1934,7 @@ async def audit_dashboard(
                 "checklist_completed": completed_count,
                 "checklist_total": len(CHECKLIST_SECTIONS),
                 "checklist_pct": round(completed_count / len(CHECKLIST_SECTIONS) * 100),
-                "checklist_status": "In Progress" if has_checklist else "Pending",
+                "checklist_status": "In Progress" if completed_count else "Pending",
                 "stock_count_items": stock_count_items,
                 "stock_count_status": "Submitted" if cs.get("stock_count") else ("In Progress" if stock_count_items else "Pending"),
                 "status": "In Progress",
