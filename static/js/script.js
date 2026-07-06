@@ -6,6 +6,7 @@ let isExitConfirmed = false;
 let isNavigatingInternally = false;
 let userRole = 'user';
 
+
 if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     API_BASE_URL = "http://localhost:8000";
 } else {
