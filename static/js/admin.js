@@ -945,6 +945,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <th class="px-4 py-3 text-left">Item Name</th>
                 <th class="px-4 py-3 text-center">Expected</th>
                 <th class="px-4 py-3 text-center">Physical</th>
+                <th class="px-4 py-3 text-center">Difference</th>
                 <th class="px-4 py-3 text-left">Remarks</th>
             </tr></thead><tbody class="divide-y">`;
 
@@ -954,6 +955,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <td class="px-4 py-3">${item.item_name || '—'}</td>
                     <td class="px-4 py-3 text-center">${item.qty || '—'}</td>
                     <td class="px-4 py-3 text-center font-semibold">${item.physical_amount || '—'}</td>
+                    <td class="px-4 py-3 text-center">${stockCountDifference(item.qty, item.physical_amount)}</td>
                     <td class="px-4 py-3 text-gray-600">${item.remarks || '—'}</td>
                 </tr>`;
                 });
@@ -1012,6 +1014,12 @@ document.addEventListener("DOMContentLoaded", () => {
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#039;');
+    }
+
+    function stockCountDifference(expected, physical) {
+        const e = parseFloat(expected), p = parseFloat(physical);
+        if (isNaN(e) || isNaN(p)) return '—';
+        return e - p;
     }
 
     function isImageDataUrl(value) {
@@ -1821,7 +1829,7 @@ document.addEventListener("DOMContentLoaded", () => {
         data.forEach(d => {
             if (mode === 'stockcount' && d.stock_count_data) {
                 d.stock_count_data.forEach(sc => {
-                    rows.push({ Date: d.date, User: d.user_id, ItemCode: sc.item_code, ItemName: sc.item_name, ExpectedQty: sc.qty, PhysicalQty: sc.physical_amount, Remarks: sc.remarks, Sheet: sc.sheet_name });
+                    rows.push({ Date: d.date, User: d.user_id, ItemCode: sc.item_code, ItemName: sc.item_name, ExpectedQty: sc.qty, PhysicalQty: sc.physical_amount, Difference: stockCountDifference(sc.qty, sc.physical_amount), Remarks: sc.remarks, Sheet: sc.sheet_name });
                 });
             } else if (mode === 'checklist') {
                 rows.push({ Date: d.date, User: d.user_id, Submitted: d.submitted_at || '' });
@@ -1915,6 +1923,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <th class="py-2 px-3 text-left">Item Name</th>
                     <th class="py-2 px-3 text-left">Expected</th>
                     <th class="py-2 px-3 text-left">Physical</th>
+                    <th class="py-2 px-3 text-left">Difference</th>
                     <th class="py-2 px-3 text-left">Remarks</th>
                 </tr></thead><tbody>`;
             (audit.stock_count_data || []).forEach(item => {
@@ -1923,6 +1932,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <td class="py-2 px-3">${item.item_name}</td>
                     <td class="py-2 px-3">${item.qty}</td>
                     <td class="py-2 px-3 font-semibold">${item.physical_amount || '—'}</td>
+                    <td class="py-2 px-3">${stockCountDifference(item.qty, item.physical_amount)}</td>
                     <td class="py-2 px-3 text-gray-600">${item.remarks || '—'}</td>
                 </tr>`;
             });

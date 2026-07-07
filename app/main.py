@@ -485,11 +485,14 @@ def generate_stock_count_excel_bytes(audit_data: dict) -> bytes:
     )
     cols = ["sheet_name", "item_name", "item_code", "qty", "physical_amount", "remarks"]
     df = df[[c for c in cols if c in df.columns]]
+    df["difference"] = pd.to_numeric(df.get("qty"), errors="coerce") - pd.to_numeric(df.get("physical_amount"), errors="coerce")
     df.rename(columns={
         "sheet_name": "Sheet Name", "item_name": "Item Name",
         "item_code": "Item Code", "qty": "Expected Qty",
-        "physical_amount": "Physical Count", "remarks": "Remarks",
+        "physical_amount": "Physical Count", "difference": "Difference", "remarks": "Remarks",
     }, inplace=True)
+    ordered = ["Sheet Name", "Item Name", "Item Code", "Expected Qty", "Physical Count", "Difference", "Remarks"]
+    df = df[[c for c in ordered if c in df.columns]]
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Stock Count")
