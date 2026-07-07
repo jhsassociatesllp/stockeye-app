@@ -200,6 +200,18 @@ def stock_item_key(item: dict) -> tuple:
     )
 
 
+def compute_stock_count_remarks(qty, physical_amount) -> str:
+    try:
+        diff = float(physical_amount) - float(qty)
+    except (TypeError, ValueError):
+        return ""
+    if diff > 0:
+        return "Excess"
+    if diff < 0:
+        return "Short"
+    return "No difference"
+
+
 def merge_stock_count_data(existing_items: list, incoming_items: list) -> list:
     merged = []
     index_by_key = {}
@@ -485,7 +497,7 @@ def generate_stock_count_excel_bytes(audit_data: dict) -> bytes:
     )
     cols = ["sheet_name", "item_name", "item_code", "qty", "physical_amount", "remarks"]
     df = df[[c for c in cols if c in df.columns]]
-    df["difference"] = pd.to_numeric(df.get("qty"), errors="coerce") - pd.to_numeric(df.get("physical_amount"), errors="coerce")
+    df["difference"] = pd.to_numeric(df.get("physical_amount"), errors="coerce") - pd.to_numeric(df.get("qty"), errors="coerce")
     df.rename(columns={
         "sheet_name": "Sheet Name", "item_name": "Item Name",
         "item_code": "Item Code", "qty": "Expected Qty",
@@ -1353,7 +1365,6 @@ async def save_stock_count_item(request: Request, emp_id: str = Depends(get_curr
         item_name  = body.get("item_name")
         sheet_name = body.get("sheet_name", "")
         physical_amount = body.get("physical_amount", "")
-        remarks    = body.get("remarks", "")
 
         if not item_code or not item_name:
             return JSONResponse(
@@ -1365,6 +1376,7 @@ async def save_stock_count_item(request: Request, emp_id: str = Depends(get_curr
             {"item_code": item_code}, {"_id": 0, "qty": 1}
         )
         qty = (master or {}).get("qty", "")
+        remarks = compute_stock_count_remarks(qty, physical_amount)
 
         today = datetime.now(timezone.utc).date().isoformat()
         audit = temp_audit_data_collection.find_one({"user_id": emp_id, "date": today})

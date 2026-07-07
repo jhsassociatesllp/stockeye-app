@@ -1019,7 +1019,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function stockCountDifference(expected, physical) {
         const e = parseFloat(expected), p = parseFloat(physical);
         if (isNaN(e) || isNaN(p)) return '—';
-        return e - p;
+        return p - e;
     }
 
     function isImageDataUrl(value) {

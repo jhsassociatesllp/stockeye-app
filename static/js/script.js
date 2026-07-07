@@ -2329,6 +2329,15 @@ function renderStockItemsPagination(totalItems) {
     `;
 }
 
+function computeStockCountRemarks(qty, physicalAmount) {
+    const e = parseFloat(qty), p = parseFloat(physicalAmount);
+    if (isNaN(e) || isNaN(p)) return '';
+    const diff = p - e;
+    if (diff > 0) return 'Excess';
+    if (diff < 0) return 'Short';
+    return 'No difference';
+}
+
 window.changeStockItemsPage = function (page) {
     const totalPages = Math.max(1, Math.ceil(filteredStockItems.length / STOCK_ITEMS_PAGE_SIZE));
     stockItemsPage = Math.min(Math.max(1, page), totalPages);
@@ -2385,9 +2394,7 @@ function renderStockItems() {
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
-                        <input type="text" id="remarks-${index}" value="${item.remarks || ''}"
-                            class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                            placeholder="Optional remarks">
+                        <div id="remarks-${index}" class="w-full p-2 border border-gray-200 rounded-lg bg-gray-50 text-sm font-semibold">${item.remarks || '—'}</div>
                     </div>
                     <button id="save-stock-item-${index}" class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700">Save</button>
                 </div>
@@ -2403,6 +2410,10 @@ function renderStockItems() {
             arrow.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
         };
 
+        document.getElementById(`physical-amount-${index}`).addEventListener('input', (e) => {
+            document.getElementById(`remarks-${index}`).textContent = computeStockCountRemarks(item.qty, e.target.value) || '—';
+        });
+
         document.getElementById(`save-stock-item-${index}`).onclick = async () => saveStockItem(item, index);
     });
     renderStockItemsPagination(filteredStockItems.length);
@@ -2412,17 +2423,16 @@ async function saveStockItem(item, index) {
     const token = localStorage.getItem('access_token');
     if (!token) return;
     const physicalAmount = document.getElementById(`physical-amount-${index}`).value;
-    const remarks = document.getElementById(`remarks-${index}`).value;
     try {
         const res = await fetch(`${API_BASE_URL}/api/save-stock-count-item`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_code: item.item_code, item_name: item.item_name, sheet_name: item.sheet_name || '', physical_amount: physicalAmount, remarks })
+            body: JSON.stringify({ item_code: item.item_code, item_name: item.item_name, sheet_name: item.sheet_name || '', physical_amount: physicalAmount })
         });
         const text = await res.text(); let data = {}; try { data = JSON.parse(text); } catch { }
         if (!res.ok) { showPopup(data.message || 'Failed to save', 'error'); return; }
         showPopup('Item saved successfully ✅', 'success');
-        item.physical_amount = physicalAmount; item.remarks = remarks;
+        item.physical_amount = physicalAmount; item.remarks = computeStockCountRemarks(item.qty, physicalAmount);
         const query = document.getElementById('stock-search')?.value.toLowerCase().trim() || '';
         applyStockFilter(query, false);
     } catch (err) { showPopup('Error saving: ' + err.message, 'error'); }
